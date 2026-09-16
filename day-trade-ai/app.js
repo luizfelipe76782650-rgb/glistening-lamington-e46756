@@ -8,11 +8,13 @@
   const SYMBOLS = {
     demo: [
       { value: "DEMO-CRYPTO", label: "Cripto simulada (BTC-like)", base: 61000, vol: 0.0016 },
+      { value: "DEMO-XAU", label: "Ouro simulado (XAU/USD)", base: 2650, vol: 0.0008 },
       { value: "DEMO-FX", label: "Forex simulado (EUR/USD)", base: 1.0852, vol: 0.00045 },
       { value: "DEMO-STOCK", label: "Ação simulada (PETR4-like)", base: 38.2, vol: 0.002 },
     ],
     binance: [
       { value: "BTCUSDT", label: "BTC/USDT" },
+      { value: "PAXGUSDT", label: "XAU/USD (Ouro, via token PAXG)" },
       { value: "ETHUSDT", label: "ETH/USDT" },
       { value: "SOLUSDT", label: "SOL/USDT" },
       { value: "BNBUSDT", label: "BNB/USDT" },
