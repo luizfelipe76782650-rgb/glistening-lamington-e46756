@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Day Trade Entry AI</title>
+    <meta name="description" content="Inteligência que analisa o gráfico em tempo real e marca os pontos de entrada de compra e venda no day trade." />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="stylesheet" href="./style.css" />
+    <script src="./vendor/lightweight-charts.standalone.production.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-dot" id="statusDot"></span>
+          <h1>Day Trade Entry AI</h1>
+        </div>
+
+        <div class="controls">
+          <label class="ctrl">
+            <span>Fonte</span>
+            <select id="sourceSelect">
+              <option value="demo">Simulação (sempre funciona)</option>
+              <option value="binance">Ao vivo — Binance (cripto)</option>
+            </select>
+          </label>
+
+          <label class="ctrl">
+            <span>Ativo</span>
+            <select id="symbolSelect"></select>
+          </label>
+
+          <label class="ctrl">
+            <span>Timeframe</span>
+            <select id="timeframeSelect">
+              <option value="1m">1 minuto</option>
+              <option value="5m" selected>5 minutos</option>
+              <option value="15m">15 minutos</option>
+            </select>
+          </label>
+
+          <button id="soundToggle" class="icon-btn" title="Ativar/desativar som de alerta">🔔</button>
+        </div>
+      </header>
+
+      <div class="status-line" id="statusLine">Iniciando simulação…</div>
+
+      <main class="layout">
+        <section class="chart-col">
+          <div id="priceChart" class="chart price-chart"></div>
+          <div class="rsi-label">RSI (14)</div>
+          <div id="rsiChart" class="chart rsi-chart"></div>
+        </section>
+
+        <aside class="side-col">
+          <div class="signal-card" id="signalCard">
+            <div class="signal-card-empty">Aguardando o próximo sinal de entrada…</div>
+          </div>
+
+          <div class="stats">
+            <div class="stat">
+              <span class="stat-value" id="statTotal">0</span>
+              <span class="stat-label">Sinais</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value" id="statWinrate">—</span>
+              <span class="stat-label">Acerto</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value" id="statConfidence">—</span>
+              <span class="stat-label">Confiança média</span>
+            </div>
+          </div>
+
+          <div class="history">
+            <h2>Histórico de entradas</h2>
+            <div class="history-list" id="historyList">
+              <div class="history-empty">Nenhuma entrada marcada ainda.</div>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="disclaimer">
+        Ferramenta educacional de estudo de estratégia. As entradas marcadas são geradas por regras técnicas (cruzamento de médias, RSI e volume) e <strong>não são recomendação de investimento</strong>. Opere sempre com gestão de risco.
+      </footer>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

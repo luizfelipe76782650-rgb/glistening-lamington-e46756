@@ -1,0 +1,404 @@
+:root {
+  --bg: #0b0e14;
+  --panel: #11151f;
+  --panel-2: #161b28;
+  --border: #232a3a;
+  --text: #e6e9f0;
+  --text-dim: #8a92a6;
+  --green: #26a69a;
+  --green-bright: #2ee6a6;
+  --red: #ef5350;
+  --amber: #f5b942;
+  --blue: #4f8cff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", Roboto, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand h1 {
+  font-size: 18px;
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.brand-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.brand-dot.live {
+  background: var(--green-bright);
+  box-shadow: 0 0 8px var(--green-bright);
+}
+
+.brand-dot.down {
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.ctrl {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  color: var(--text-dim);
+  gap: 3px;
+}
+
+.ctrl select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.icon-btn {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 15px;
+  align-self: flex-end;
+}
+
+.icon-btn.muted {
+  opacity: 0.4;
+}
+
+.status-line {
+  padding: 6px 20px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.layout {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  padding: 16px 20px;
+  flex-wrap: wrap;
+}
+
+.chart-col {
+  flex: 3;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chart {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.price-chart {
+  height: 440px;
+}
+
+.rsi-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 2px 0;
+}
+
+.rsi-chart {
+  height: 130px;
+}
+
+.side-col {
+  flex: 1;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.signal-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.signal-card-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.signal-card.buy {
+  border-color: var(--green-bright);
+  box-shadow: 0 0 24px rgba(46, 230, 166, 0.15);
+}
+
+.signal-card.sell {
+  border-color: var(--red);
+  box-shadow: 0 0 24px rgba(239, 83, 80, 0.15);
+}
+
+.signal-body {
+  width: 100%;
+}
+
+.signal-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 10px;
+}
+
+.signal-tag.buy {
+  background: rgba(46, 230, 166, 0.15);
+  color: var(--green-bright);
+}
+
+.signal-tag.sell {
+  background: rgba(239, 83, 80, 0.15);
+  color: var(--red);
+}
+
+.signal-price {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 4px 0 10px;
+}
+
+.signal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+  font-size: 12.5px;
+}
+
+.signal-grid div span {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.signal-confidence-bar {
+  margin-top: 12px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.signal-confidence-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.stats {
+  display: flex;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.stat {
+  flex: 1;
+  padding: 10px 8px;
+  text-align: center;
+  border-right: 1px solid var(--border);
+}
+
+.stat:last-child {
+  border-right: none;
+}
+
+.stat-value {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.stat-label {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.history {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  flex: 1;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+}
+
+.history h2 {
+  font-size: 13px;
+  margin: 0 0 8px;
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.history-list {
+  overflow-y: auto;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-empty {
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  background: var(--panel-2);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.history-item .side {
+  font-weight: 700;
+  width: 46px;
+}
+
+.history-item .side.buy {
+  color: var(--green-bright);
+}
+
+.history-item .side.sell {
+  color: var(--red);
+}
+
+.history-item .result {
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+}
+
+.history-item .result.open {
+  color: var(--amber);
+  background: rgba(245, 185, 66, 0.15);
+}
+
+.history-item .result.win {
+  color: var(--green-bright);
+  background: rgba(46, 230, 166, 0.15);
+}
+
+.history-item .result.loss {
+  color: var(--red);
+  background: rgba(239, 83, 80, 0.15);
+}
+
+.disclaimer {
+  padding: 12px 20px;
+  font-size: 11px;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 50;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@keyframes pulseIn {
+  from {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.signal-body {
+  animation: pulseIn 0.25s ease-out;
+}
