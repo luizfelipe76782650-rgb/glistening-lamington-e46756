@@ -71,6 +71,7 @@
     ws: null,
     reconnectTimer: null,
     activeProvider: null,
+    avoidProvider: null,
   };
 
   // ---------------------------------------------------------------------
@@ -671,13 +672,18 @@
   async function startLive() {
     stopLive();
     const info = symbolInfo(state.symbol);
-    const providerIds = ["binance", "coinbase"].filter((id) => info[id]);
+    let providerIds = ["binance", "coinbase"].filter((id) => info[id]);
+    if (state.avoidProvider && providerIds.length > 1) {
+      providerIds = providerIds.filter((id) => id !== state.avoidProvider).concat(providerIds.filter((id) => id === state.avoidProvider));
+    }
+    const errors = [];
 
     for (const providerId of providerIds) {
       const provider = PROVIDERS[providerId];
       setStatus(`Conectando — ${provider.label} — ${info.short} (${state.timeframe})…`);
       try {
         const candles = await provider.fetchHistory(info[providerId], state.timeframe);
+        if (!candles.length) throw new Error("nenhum candle retornado");
         seedHistory(candles);
         resetSignalUI();
         backfillHistoricalSignals();
@@ -686,11 +692,11 @@
         return;
       } catch (err) {
         console.warn(`[day-trade-ai] ${provider.label} failed:`, err);
-        continue;
+        errors.push(`${provider.label}: ${err.message}`);
       }
     }
 
-    scheduleReconnect(`Não foi possível conectar a nenhuma corretora (${providerIds.map((id) => PROVIDERS[id].label).join(" / ")}).`);
+    scheduleReconnect(`Falha em ${info.short} — ${errors.join(" | ")}`);
   }
 
   function connectStream(providerId, productSymbol) {
@@ -701,6 +707,7 @@
         ws.onclose = null;
         ws.onerror = null;
         ws.close();
+        state.avoidProvider = providerId;
         scheduleReconnect(`${provider.label} não respondeu em tempo (timeout).`);
       }
     }, WS_OPEN_TIMEOUT_MS);
@@ -708,6 +715,7 @@
     const ws = provider.connectStream(productSymbol, state.timeframe, {
       onOpen: () => {
         opened = true;
+        state.avoidProvider = null;
         clearTimeout(openTimer);
         setStatus(statusMessage(), "live");
       },
@@ -718,10 +726,12 @@
       },
       onError: () => {
         clearTimeout(openTimer);
+        state.avoidProvider = providerId;
         scheduleReconnect(`Conexão em tempo real com ${provider.label} falhou.`);
       },
       onClose: () => {
         clearTimeout(openTimer);
+        state.avoidProvider = providerId;
         scheduleReconnect(`Conexão com ${provider.label} foi encerrada.`);
       },
     });
