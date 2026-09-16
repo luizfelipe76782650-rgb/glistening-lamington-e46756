@@ -6,12 +6,22 @@
   // ---------------------------------------------------------------------
 
   const SYMBOLS = [
-    { value: "BTCUSDT", label: "BTC/USDT" },
-    { value: "PAXGUSDT", label: "XAU/USD (Ouro, via token PAXG)" },
-    { value: "ETHUSDT", label: "ETH/USDT" },
-    { value: "SOLUSDT", label: "SOL/USDT" },
-    { value: "BNBUSDT", label: "BNB/USDT" },
+    { value: "BTCUSDT", label: "BTC/USDT", short: "BTC", icon: "🟠", assetClass: "crypto" },
+    { value: "PAXGUSDT", label: "XAU/USD (Ouro, via token PAXG)", short: "XAU", icon: "🥇", assetClass: "commodities" },
+    { value: "ETHUSDT", label: "ETH/USDT", short: "ETH", icon: "Ξ", assetClass: "crypto" },
+    { value: "SOLUSDT", label: "SOL/USDT", short: "SOL", icon: "◎", assetClass: "crypto" },
+    { value: "BNBUSDT", label: "BNB/USDT", short: "BNB", icon: "🔶", assetClass: "crypto" },
   ];
+
+  function symbolInfo(value) {
+    return SYMBOLS.find((s) => s.value === value) || { short: value, icon: "📈", assetClass: "crypto" };
+  }
+
+  function tierSuffix(confidence) {
+    if (confidence >= 82) return "_FORTE";
+    if (confidence < 65) return "_FRACA";
+    return "";
+  }
 
   const RECONNECT_DELAY_MS = 8000;
 
@@ -241,6 +251,8 @@
       tp,
       confidence: Math.round(confidence),
       status: "open",
+      symbol: state.symbol,
+      timeframe: state.timeframe,
     };
 
     fireSignal(signal);
@@ -253,7 +265,7 @@
       position: signal.side === "buy" ? "belowBar" : "aboveBar",
       color: signal.side === "buy" ? "#2ee6a6" : "#ef5350",
       shape: signal.side === "buy" ? "arrowUp" : "arrowDown",
-      text: `${signal.side === "buy" ? "COMPRA" : "VENDA"} ${signal.confidence}%`,
+      text: `${signal.side === "buy" ? "COMPRA" : "VENDA"}${tierSuffix(signal.confidence)} ${signal.confidence}%`,
     });
     if (state.markers.length > MAX_MARKERS) state.markers.shift();
     candleSeries.setMarkers(state.markers);
@@ -302,7 +314,7 @@
 
   function renderSignalCard(signal) {
     els.signalCard.className = `signal-card ${signal.side}`;
-    const tagLabel = signal.side === "buy" ? "▲ ENTRADA COMPRA" : "▼ ENTRADA VENDA";
+    const tagLabel = `${signal.side === "buy" ? "▲ ENTRADA COMPRA" : "▼ ENTRADA VENDA"}${tierSuffix(signal.confidence)}`;
     const barColor = signal.side === "buy" ? "#2ee6a6" : "#ef5350";
     els.signalCard.innerHTML = `
       <div class="signal-body">
@@ -325,15 +337,26 @@
     if (els.historyList.querySelector(".history-empty")) {
       els.historyList.innerHTML = "";
     }
+    const info = symbolInfo(signal.symbol);
+    const tierLabel = `${signal.side === "buy" ? "COMPRA" : "VENDA"}${tierSuffix(signal.confidence)}`;
     const row = document.createElement("div");
-    row.className = "history-item";
+    row.className = `history-item ${signal.side}`;
     row.id = `hist-${signal.id}`;
     row.innerHTML = `
-      <span class="side ${signal.side}">${signal.side === "buy" ? "COMPRA" : "VENDA"}</span>
-      <span>${formatPrice(signal.entry)}</span>
-      <span>${signal.confidence}%</span>
-      <span>${new Date(signal.time * 1000).toLocaleTimeString("pt-BR")}</span>
-      <span class="result open">ABERTO</span>
+      <span class="asset-icon">${info.icon}</span>
+      <div class="asset-info">
+        <div class="asset-name">${info.short}</div>
+        <div class="asset-meta">${info.assetClass} • ${signal.timeframe}</div>
+        <div class="tier-row">
+          <span class="tier-pill ${signal.side}">${tierLabel}</span>
+          <span class="tier-strength">${signal.confidence}% força</span>
+        </div>
+      </div>
+      <div class="side-col-meta">
+        <div class="price-val">${formatPrice(signal.entry)}</div>
+        <div class="time-val">${new Date(signal.time * 1000).toLocaleTimeString("pt-BR")}</div>
+        <span class="result open">ABERTO</span>
+      </div>
     `;
     els.historyList.prepend(row);
     updateStats();

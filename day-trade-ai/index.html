@@ -11,29 +11,31 @@
   </head>
   <body>
     <div class="app">
-      <header class="topbar">
-        <div class="brand">
-          <span class="brand-dot" id="statusDot"></span>
-          <h1>Day Trade Entry AI</h1>
+      <header class="hero">
+        <div class="hero-top">
+          <div class="brand">
+            <span class="brand-dot" id="statusDot"></span>
+            <h1>Day Trade Entry AI</h1>
+          </div>
+          <div class="controls">
+            <label class="ctrl">
+              <span>Ativo</span>
+              <select id="symbolSelect"></select>
+            </label>
+
+            <label class="ctrl">
+              <span>Timeframe</span>
+              <select id="timeframeSelect">
+                <option value="1m">1 minuto</option>
+                <option value="5m" selected>5 minutos</option>
+                <option value="15m">15 minutos</option>
+              </select>
+            </label>
+
+            <button id="soundToggle" class="icon-btn" title="Ativar/desativar som de alerta">🔔</button>
+          </div>
         </div>
-
-        <div class="controls">
-          <label class="ctrl">
-            <span>Ativo</span>
-            <select id="symbolSelect"></select>
-          </label>
-
-          <label class="ctrl">
-            <span>Timeframe</span>
-            <select id="timeframeSelect">
-              <option value="1m">1 minuto</option>
-              <option value="5m" selected>5 minutos</option>
-              <option value="15m">15 minutos</option>
-            </select>
-          </label>
-
-          <button id="soundToggle" class="icon-btn" title="Ativar/desativar som de alerta">🔔</button>
-        </div>
+        <p class="hero-subtitle">Motor de entrada em tempo real — cruzamento de médias, RSI e volume, direto da Binance.</p>
       </header>
 
       <div class="status-line" id="statusLine">Conectando à Binance…</div>
@@ -66,7 +68,7 @@
           </div>
 
           <div class="history">
-            <h2>Histórico de entradas</h2>
+            <h2>Análises recentes</h2>
             <div class="history-list" id="historyList">
               <div class="history-empty">Nenhuma entrada marcada ainda.</div>
             </div>
