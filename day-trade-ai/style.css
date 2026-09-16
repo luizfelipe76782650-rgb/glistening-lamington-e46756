@@ -47,9 +47,93 @@ html, body {
   gap: 12px;
 }
 
+.hero-greeting {
+  margin: 16px 2px 2px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
 .hero-subtitle {
-  margin: 10px 2px 0;
+  margin: 4px 2px 0;
   font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  padding: 16px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.feature-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 14px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.15s;
+}
+
+.feature-card.active {
+  border-color: rgba(46, 230, 166, 0.4);
+}
+
+.feature-card.active:hover {
+  transform: translateY(-2px);
+  border-color: var(--green-bright);
+}
+
+.feature-card.soon {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.feature-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.feature-badge.vip {
+  color: #1a1300;
+  background: linear-gradient(90deg, #f5d76e, #f5b942);
+}
+
+.feature-badge.live {
+  color: #04231b;
+  background: var(--green-bright);
+}
+
+.feature-badge.soon {
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.feature-icon {
+  font-size: 20px;
+}
+
+.feature-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.feature-desc {
+  font-size: 11px;
   color: var(--text-dim);
 }
 

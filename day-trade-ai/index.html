@@ -35,12 +35,52 @@
             <button id="soundToggle" class="icon-btn" title="Ativar/desativar som de alerta">🔔</button>
           </div>
         </div>
-        <p class="hero-subtitle">Motor de entrada em tempo real — cruzamento de médias, RSI e volume, direto da Binance.</p>
+        <p class="hero-greeting">Olá, Luiz! 👋</p>
+        <p class="hero-subtitle">O que você quer analisar hoje? Motor de entrada em tempo real — cruzamento de médias, RSI e volume, com dados reais de mercado.</p>
       </header>
+
+      <nav class="feature-grid">
+        <a class="feature-card" href="#chartSection">
+          <span class="feature-badge vip">VIP</span>
+          <span class="feature-icon">⭐</span>
+          <span class="feature-title">Sinais Premium</span>
+          <span class="feature-desc">Setups filtrados por confiança alta — em breve</span>
+        </a>
+        <a class="feature-card active" href="#chartSection">
+          <span class="feature-badge live">AO VIVO</span>
+          <span class="feature-icon">📡</span>
+          <span class="feature-title">Live Trading IA 24/7</span>
+          <span class="feature-desc">O motor abaixo já roda ao vivo, direto da corretora</span>
+        </a>
+        <div class="feature-card soon">
+          <span class="feature-badge soon">Em breve</span>
+          <span class="feature-icon">🤖</span>
+          <span class="feature-title">Copy Trading</span>
+          <span class="feature-desc">Robôs automáticos</span>
+        </div>
+        <div class="feature-card soon">
+          <span class="feature-badge soon">Em breve</span>
+          <span class="feature-icon">🏦</span>
+          <span class="feature-title">Corretoras</span>
+          <span class="feature-desc">Conecte contas</span>
+        </div>
+        <a class="feature-card active" href="#historySection">
+          <span class="feature-badge live">ATIVO</span>
+          <span class="feature-icon">🕘</span>
+          <span class="feature-title">Histórico</span>
+          <span class="feature-desc">Suas análises recentes, logo abaixo</span>
+        </a>
+        <div class="feature-card soon">
+          <span class="feature-badge soon">Em breve</span>
+          <span class="feature-icon">💼</span>
+          <span class="feature-title">Trades</span>
+          <span class="feature-desc">Histórico de operações executadas</span>
+        </div>
+      </nav>
 
       <div class="status-line" id="statusLine">Conectando à Binance…</div>
 
-      <main class="layout">
+      <main class="layout" id="chartSection">
         <section class="chart-col">
           <div id="priceChart" class="chart price-chart"></div>
           <div class="rsi-label">RSI (14)</div>
@@ -67,7 +107,7 @@
             </div>
           </div>
 
-          <div class="history">
+          <div class="history" id="historySection">
             <h2>Análises recentes</h2>
             <div class="history-list" id="historyList">
               <div class="history-empty">Nenhuma entrada marcada ainda.</div>
