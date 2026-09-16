@@ -55,7 +55,7 @@
   const RSI_PERIOD = 14;
   const ATR_PERIOD = 14;
   const MIN_CANDLES_TO_EVALUATE = 25;
-  const COOLDOWN_CANDLES = 8;
+  let COOLDOWN_CANDLES = 8;
   const MAX_MARKERS = 80;
 
   function symbolInfo(value) {
@@ -110,6 +110,19 @@
     mcDD: document.getElementById("mcDD"),
     mcRun: document.getElementById("mcRun"),
     mcRisk: document.getElementById("mcRisk"),
+    sideBreakdown: document.getElementById("sideBreakdown"),
+    setupBreakdown: document.getElementById("setupBreakdown"),
+    providerStatusList: document.getElementById("providerStatusList"),
+    methodRR: document.getElementById("methodRR"),
+    methodCooldown: document.getElementById("methodCooldown"),
+    setScoreMin: document.getElementById("setScoreMin"),
+    setScoreMinVal: document.getElementById("setScoreMinVal"),
+    setAcceptCore: document.getElementById("setAcceptCore"),
+    setAcceptCoreVal: document.getElementById("setAcceptCoreVal"),
+    setCooldown: document.getElementById("setCooldown"),
+    setCooldownVal: document.getElementById("setCooldownVal"),
+    notifToggle: document.getElementById("notifToggle"),
+    logoutBtn: document.getElementById("logoutBtn"),
   };
 
   // ---------------------------------------------------------------------
@@ -186,6 +199,18 @@
   rsiSeries.createPriceLine({ price: 70, color: "#ef5350", lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: "70" });
   rsiSeries.createPriceLine({ price: 30, color: "#26a69a", lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: "30" });
 
+  const equityChart = LightweightCharts.createChart(
+    document.getElementById("equityChart"),
+    { ...chartOptsBase, height: 220 }
+  );
+  const equitySeries = equityChart.addAreaSeries({
+    topColor: "rgba(74, 222, 128, 0.22)",
+    bottomColor: "rgba(74, 222, 128, 0.02)",
+    lineColor: "#4ade80",
+    lineWidth: 2,
+  });
+  equitySeries.createPriceLine({ price: 0, color: "#8a92a6", lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false });
+
   let syncing = false;
   function syncRange(source, target) {
     source.timeScale().subscribeVisibleLogicalRangeChange((range) => {
@@ -201,6 +226,7 @@
   window.addEventListener("resize", () => {
     priceChart.applyOptions({ width: document.getElementById("priceChart").clientWidth });
     rsiChart.applyOptions({ width: document.getElementById("rsiChart").clientWidth });
+    equityChart.applyOptions({ width: document.getElementById("equityChart").clientWidth });
   });
 
   // ---------------------------------------------------------------------
@@ -243,6 +269,7 @@
     setTimeout(() => els.signalCard.classList.remove("flash"), 1100);
     addHistoryItem(signal);
     playAlertSound(signal.side);
+    notifySignal(signal);
     showToast(
       `${signal.side === "buy" ? "🟢 ENTRADA DE COMPRA" : "🔴 ENTRADA DE VENDA"} — ${signal.setup} — ${formatPrice(signal.entry)} (confiança ${signal.confidence}%)`
     );
@@ -334,6 +361,7 @@
     renderZones();
     updateStats();
     updateMonteCarlo();
+    updateAnalytics();
     if (lastSignal) renderSignalCard(lastSignal);
   }
 
@@ -356,6 +384,7 @@
         updateHistoryItemResult(s);
         updateStats();
         updateMonteCarlo();
+        updateAnalytics();
       } else {
         stillOpen.push(s);
       }
@@ -463,6 +492,82 @@
   }
 
   // ---------------------------------------------------------------------
+  // Analytics (equity curve + breakdowns)
+  // ---------------------------------------------------------------------
+
+  function updateAnalytics() {
+    const closed = state.closedSignals;
+    if (!closed.length) {
+      equitySeries.setData([]);
+      els.sideBreakdown.innerHTML = `<div class="history-empty">Sem trades fechados ainda.</div>`;
+      els.setupBreakdown.innerHTML = `<div class="history-empty">Sem trades fechados ainda.</div>`;
+      return;
+    }
+
+    // Equity curve — cumulative R, one point per closed trade in time order.
+    const ordered = [...closed].sort((a, b) => a.time - b.time);
+    let cum = 0;
+    const points = [{ time: ordered[0].time - 1, value: 0 }];
+    ordered.forEach((s) => {
+      cum += s.status === "win" ? T.CONF.RR : -1;
+      points.push({ time: s.time, value: Number(cum.toFixed(3)) });
+    });
+    // lightweight-charts needs strictly increasing/unique times
+    const dedup = [];
+    const seen = new Set();
+    points.forEach((p) => {
+      let t = p.time;
+      while (seen.has(t)) t += 1;
+      seen.add(t);
+      dedup.push({ time: t, value: p.value });
+    });
+    equitySeries.setData(dedup);
+    equityChart.timeScale().fitContent();
+
+    renderBreakdown(
+      els.sideBreakdown,
+      groupWinRate(closed, (s) => (s.side === "buy" ? "Compra" : "Venda"))
+    );
+    renderBreakdown(
+      els.setupBreakdown,
+      groupWinRate(closed, (s) => s.setup || "Setup clássico")
+    );
+  }
+
+  function groupWinRate(closed, keyFn) {
+    const groups = new Map();
+    closed.forEach((s) => {
+      const key = keyFn(s);
+      if (!groups.has(key)) groups.set(key, { wins: 0, total: 0 });
+      const g = groups.get(key);
+      g.total += 1;
+      if (s.status === "win") g.wins += 1;
+    });
+    return Array.from(groups.entries())
+      .map(([label, g]) => ({ label, wr: g.wins / g.total, total: g.total }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 6);
+  }
+
+  function renderBreakdown(el, rows) {
+    if (!rows.length) {
+      el.innerHTML = `<div class="history-empty">Sem trades fechados ainda.</div>`;
+      return;
+    }
+    el.innerHTML = rows
+      .map((r) => {
+        const pct = Math.round(r.wr * 100);
+        return `
+          <div class="breakdown-item">
+            <span class="bd-label" title="${r.label}">${r.label}</span>
+            <span class="bd-bar-wrap"><span class="bd-bar" style="width:${pct}%; background:${pct >= 50 ? "#4ade80" : "#f87171"}"></span></span>
+            <span class="bd-val">${pct}% (${r.total})</span>
+          </div>`;
+      })
+      .join("");
+  }
+
+  // ---------------------------------------------------------------------
   // UI rendering
   // ---------------------------------------------------------------------
 
@@ -557,6 +662,7 @@
     els.historyList.innerHTML = `<tr><td colspan="7"><div class="history-empty">Nenhuma entrada marcada ainda.</div></td></tr>`;
     updateStats();
     updateMonteCarlo();
+    updateAnalytics();
   }
 
   let toastTimer = null;
@@ -572,6 +678,28 @@
     setText(els.statusShort, text);
     if (els.statusDot2) els.statusDot2.className = "status-dot" + (mode === "down" ? " down" : "");
     els.statusDot.className = "brand-dot" + (mode ? ` ${mode}` : "");
+    renderProviderStatus();
+  }
+
+  function renderProviderStatus() {
+    if (!els.providerStatusList) return;
+    const rows = [
+      { id: "binance", label: "Binance", coverage: "Cripto (BTC, ETH, SOL, BNB, ouro via PAXG)", tf: "1m–1M" },
+      { id: "coinbase", label: "Coinbase", coverage: "Cripto (BTC, ETH, SOL, ouro via PAXG)", tf: "1m, 5m, 15m, 1h, 6h, 1d" },
+    ];
+    els.providerStatusList.innerHTML = rows
+      .map((r) => {
+        const active = state.activeProvider === r.id;
+        const statusTxt = active ? "🟢 Ativa agora" : "⚪ Em espera (failover)";
+        return `
+          <tr>
+            <td class="pl">${r.label}</td>
+            <td>${r.coverage}</td>
+            <td>${r.tf}</td>
+            <td class="text-right pr">${statusTxt}</td>
+          </tr>`;
+      })
+      .join("");
   }
 
   // ---------------------------------------------------------------------
@@ -967,12 +1095,98 @@
   });
 
   // ---------------------------------------------------------------------
+  // Settings panel (adjusts the live engine's own thresholds)
+  // ---------------------------------------------------------------------
+
+  function updateMethodologyText() {
+    setText(els.methodRR, `${T.CONF.SL_ATR}× ATR / ${T.CONF.TP_ATR}× ATR (RR ${T.CONF.RR.toFixed(2)})`);
+    setText(els.methodCooldown, `${COOLDOWN_CANDLES} candles`);
+  }
+
+  function initSettings() {
+    els.setScoreMin.value = T.CONF.SCORE_MIN;
+    els.setAcceptCore.value = T.CONF.ACCEPT_CORE;
+    els.setCooldown.value = COOLDOWN_CANDLES;
+    setText(els.setScoreMinVal, T.CONF.SCORE_MIN);
+    setText(els.setAcceptCoreVal, T.CONF.ACCEPT_CORE);
+    setText(els.setCooldownVal, COOLDOWN_CANDLES);
+
+    els.setScoreMin.addEventListener("input", () => {
+      T.CONF.SCORE_MIN = Number(els.setScoreMin.value);
+      setText(els.setScoreMinVal, T.CONF.SCORE_MIN);
+      updateMethodologyText();
+    });
+    els.setAcceptCore.addEventListener("input", () => {
+      T.CONF.ACCEPT_CORE = Number(els.setAcceptCore.value);
+      setText(els.setAcceptCoreVal, T.CONF.ACCEPT_CORE);
+      updateMethodologyText();
+    });
+    els.setCooldown.addEventListener("input", () => {
+      COOLDOWN_CANDLES = Number(els.setCooldown.value);
+      setText(els.setCooldownVal, COOLDOWN_CANDLES);
+      updateMethodologyText();
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Browser notifications (no backend — Notification API only)
+  // ---------------------------------------------------------------------
+
+  function initNotifications() {
+    if (!("Notification" in window)) {
+      els.notifToggle.textContent = "Indisponível neste navegador";
+      els.notifToggle.disabled = true;
+      return;
+    }
+    const syncLabel = () => {
+      if (Notification.permission === "granted") {
+        els.notifToggle.textContent = "🔔 Ativadas";
+        els.notifToggle.classList.add("on");
+      } else {
+        els.notifToggle.textContent = "🔕 Ativar";
+        els.notifToggle.classList.remove("on");
+      }
+    };
+    syncLabel();
+    els.notifToggle.addEventListener("click", async () => {
+      if (Notification.permission === "granted") {
+        showToast("As notificações já estão ativas. Para desativar, use as configurações do navegador para este site.");
+        return;
+      }
+      const perm = await Notification.requestPermission();
+      syncLabel();
+      if (perm === "granted") {
+        new Notification("Day Trade Entry AI", { body: "Notificações ativadas — você será avisado quando um sinal disparar." });
+      }
+    });
+  }
+
+  function notifySignal(signal) {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const info = symbolInfo(signal.symbol);
+    try {
+      new Notification(`${signal.side === "buy" ? "🟢 COMPRA" : "🔴 VENDA"} ${info.short}`, {
+        body: `${signal.setup || "Sinal"} — ${formatPrice(signal.entry)} — confiança ${signal.confidence}%`,
+      });
+    } catch (e) {
+      // ignore (e.g. notification blocked mid-session)
+    }
+  }
+
+  // ---------------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------------
 
   renderSymbolPills();
   renderTimeframePills();
   updateSymHeader();
+  initSettings();
+  initNotifications();
+  updateMethodologyText();
+  renderProviderStatus();
+  els.logoutBtn.addEventListener("click", () => {
+    showToast("Este painel ainda não tem sistema de contas — não há nada pra sair. 🙂");
+  });
   startLive();
   setInterval(pulseScan, 10000);
 

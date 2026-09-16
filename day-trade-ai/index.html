@@ -43,15 +43,16 @@
           <aside class="fin-sidebar">
             <nav class="fin-nav">
               <div class="fin-nav-item active"><span class="fin-nav-dot"></span>DASHBOARD</div>
-              <div class="fin-nav-item" data-scroll="#perfCard"><span class="fin-nav-dot"></span>ANALYTICS</div>
-              <div class="fin-nav-item" data-scroll="#mktPanel"><span class="fin-nav-dot"></span>ARBITRADER</div>
-              <div class="fin-nav-item" data-scroll="#mcPanel"><span class="fin-nav-dot"></span>RESEARCHER</div>
+              <div class="fin-nav-item" data-scroll="#perfCard"><span class="fin-nav-dot"></span>PRICE ACTION</div>
+              <div class="fin-nav-item" data-scroll="#analyticsCard"><span class="fin-nav-dot"></span>ANALYTICS</div>
+              <div class="fin-nav-item" data-scroll="#dataSourcesCard"><span class="fin-nav-dot"></span>ARBITRADER</div>
+              <div class="fin-nav-item" data-scroll="#methodologyCard"><span class="fin-nav-dot"></span>RESEARCHER</div>
               <div class="fin-nav-item" data-scroll="#historySection"><span class="fin-nav-dot"></span>FUNDS</div>
             </nav>
             <div class="fin-nav-footer">
-              <div class="fin-nav-item">FINBRO SUPPORT</div>
-              <div class="fin-nav-item" data-scroll="#mcPanel">SETTINGS</div>
-              <div class="fin-nav-item">LOGOUT</div>
+              <div class="fin-nav-item" data-scroll="#supportCard">FINBRO SUPPORT</div>
+              <div class="fin-nav-item" data-scroll="#settingsCard">SETTINGS</div>
+              <div class="fin-nav-item" id="logoutBtn">LOGOUT</div>
             </div>
           </aside>
 
@@ -118,6 +119,31 @@
               </div>
             </section>
 
+            <!-- Analytics: equity curve + breakdowns -->
+            <section class="card" id="analyticsCard">
+              <div class="hist-head">
+                <h2 class="card-title">Curva de capital (Analytics)</h2>
+                <span class="hist-hint">acumulado em R, 1 trade = risco fixo de 1R</span>
+              </div>
+              <div class="chart-box equity-box">
+                <div id="equityChart" class="equityChart"></div>
+              </div>
+              <div class="grid-2 analytics-sub">
+                <div class="mini-card">
+                  <h3 class="mini-title">Acerto por lado</h3>
+                  <div id="sideBreakdown" class="breakdown-list">
+                    <div class="history-empty">Sem trades fechados ainda.</div>
+                  </div>
+                </div>
+                <div class="mini-card">
+                  <h3 class="mini-title">Acerto por setup</h3>
+                  <div id="setupBreakdown" class="breakdown-list">
+                    <div class="history-empty">Sem trades fechados ainda.</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             <!-- Analysis + Monte Carlo -->
             <section class="grid-2">
               <div class="card" id="mktPanel">
@@ -146,6 +172,81 @@
               </div>
             </section>
 
+            <!-- Methodology (Researcher tab) -->
+            <section class="card" id="methodologyCard">
+              <div class="hist-head">
+                <h2 class="card-title">Metodologia — como o motor decide uma entrada</h2>
+                <span class="hist-hint">transparência total: nada aqui é caixa-preta</span>
+              </div>
+              <div class="method-grid">
+                <div class="method-item">
+                  <span class="method-tag">Estrutura</span>
+                  <h4>BOS / CHoCH</h4>
+                  <p>Identifica topos e fundos (pivôs) e detecta quando o preço rompe um deles a favor da tendência (BOS) ou contra ela, sinalizando possível reversão (CHoCH).</p>
+                </div>
+                <div class="method-item">
+                  <span class="method-tag">Liquidez</span>
+                  <h4>Sweep (caça de stop)</h4>
+                  <p>Quando o preço perfura um topo/fundo recente com o pavio e fecha de volta pra dentro — clássico movimento de "captura" de stops antes da reversão real.</p>
+                </div>
+                <div class="method-item">
+                  <span class="method-tag">Zonas</span>
+                  <h4>Order Blocks (OB)</h4>
+                  <p>Último candle de base antes de um movimento impulsivo (≥1,25×ATR). Reteste dessa zona é um dos fatores de maior peso no score.</p>
+                </div>
+                <div class="method-item">
+                  <span class="method-tag">Zonas</span>
+                  <h4>Fair Value Gap (FVG)</h4>
+                  <p>Desequilíbrio de 3 velas onde o preço "pulou" um intervalo — regiões que o mercado tende a revisitar antes de continuar.</p>
+                </div>
+                <div class="method-item">
+                  <span class="method-tag">Confirmação</span>
+                  <h4>Padrões de candle</h4>
+                  <p>Engolfo, martelo, estrela cadente, estrela da manhã/tarde, três soldados/corvos — cada um soma pontos de acordo com sua força estatística.</p>
+                </div>
+                <div class="method-item">
+                  <span class="method-tag">Momentum</span>
+                  <h4>RSI + divergência</h4>
+                  <p>Sobrecompra/sobrevenda, mais divergência entre preço e RSI nos últimos pivôs (sinal clássico de exaustão de movimento).</p>
+                </div>
+                <div class="method-item">
+                  <span class="method-tag">Contexto</span>
+                  <h4>Tendência maior (HTF)</h4>
+                  <p>Operar a favor do timeframe maior soma pontos; operar contra ele é fortemente penalizado — validado com backtest real.</p>
+                </div>
+                <div class="method-item">
+                  <span class="method-tag">Filtro</span>
+                  <h4>Score de confluência</h4>
+                  <p>Cada fator soma ou subtrai pontos. Só vira sinal com nota ≥80 <em>e</em> pelo menos 3 confirmações centrais (zona, sweep ou padrão forte).</p>
+                </div>
+              </div>
+              <div class="mkt-row"><span>Stop / Alvo</span><b id="methodRR">—</b></div>
+              <div class="mkt-row"><span>Cooldown entre sinais</span><b id="methodCooldown">—</b></div>
+              <p class="mc-note">Nenhum indicador "prevê" o mercado. Isso reduz entradas ruins ao exigir várias coisas alinhadas ao mesmo tempo — não é garantia de lucro.</p>
+            </section>
+
+            <!-- Data sources (Arbitrader tab) -->
+            <section class="card" id="dataSourcesCard">
+              <div class="hist-head">
+                <h2 class="card-title">Fontes de dados</h2>
+                <span class="hist-hint">dado real de mercado, com failover automático</span>
+              </div>
+              <div class="table-wrap">
+                <table class="fin-table">
+                  <thead>
+                    <tr class="text-muted">
+                      <th class="text-left pl">Corretora</th>
+                      <th class="text-left">Cobertura</th>
+                      <th class="text-left">Timeframes</th>
+                      <th class="text-right pr">Status agora</th>
+                    </tr>
+                  </thead>
+                  <tbody id="providerStatusList"></tbody>
+                </table>
+              </div>
+              <p class="mc-note">Se a corretora ativa parar de responder (histórico ou tempo real), o painel troca para a próxima automaticamente e nunca mostra preço inventado.</p>
+            </section>
+
             <!-- History -->
             <section class="card" id="historySection">
               <div class="hist-head">
@@ -170,6 +271,48 @@
                   </tbody>
                 </table>
               </div>
+            </section>
+
+            <!-- Settings -->
+            <section class="card" id="settingsCard">
+              <div class="hist-head">
+                <h2 class="card-title">Configurações</h2>
+                <span class="hist-hint">ajustes aplicam no próximo sinal</span>
+              </div>
+              <div class="settings-grid">
+                <label class="settings-row">
+                  <span>Confiança mínima (score)</span>
+                  <input type="range" id="setScoreMin" min="60" max="95" step="1" />
+                  <b id="setScoreMinVal">—</b>
+                </label>
+                <label class="settings-row">
+                  <span>Confluências mínimas</span>
+                  <input type="range" id="setAcceptCore" min="1" max="5" step="1" />
+                  <b id="setAcceptCoreVal">—</b>
+                </label>
+                <label class="settings-row">
+                  <span>Cooldown entre sinais (candles)</span>
+                  <input type="range" id="setCooldown" min="1" max="20" step="1" />
+                  <b id="setCooldownVal">—</b>
+                </label>
+                <label class="settings-row">
+                  <span>Notificações do navegador</span>
+                  <button id="notifToggle" class="fin-icon-btn small">🔔 Ativar</button>
+                </label>
+              </div>
+              <p class="mc-note" id="settingsNote">Valores atuais salvos só nesta sessão do navegador (não é enviado pra nenhum servidor).</p>
+            </section>
+
+            <!-- Support -->
+            <section class="card" id="supportCard">
+              <div class="hist-head">
+                <h2 class="card-title">Suporte</h2>
+              </div>
+              <div class="mkt-row"><span>O que é este painel?</span><b>Ferramenta de estudo de Smart Money / Price Action com dado real de mercado.</b></div>
+              <div class="mkt-row"><span>É recomendação de investimento?</span><b>Não. É análise técnica automatizada — educacional.</b></div>
+              <div class="mkt-row"><span>De onde vem o preço?</span><b>Binance e Coinbase (APIs públicas), sem intermediário.</b></div>
+              <div class="mkt-row"><span>Existe conta / login?</span><b>Ainda não — tudo roda no seu navegador, sem servidor.</b></div>
+              <div class="mkt-row"><span>Posso confiar 100% nos sinais?</span><b>Não — acompanhe sempre com sua própria gestão de risco.</b></div>
             </section>
 
             <!-- Status -->
