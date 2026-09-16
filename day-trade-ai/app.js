@@ -5,6 +5,8 @@
   // Config
   // ---------------------------------------------------------------------
 
+  const T = window.TradeCore;
+
   const SYMBOLS = [
     { value: "BTCUSDT", label: "BTC/USDT", short: "BTC", icon: "🟠", assetClass: "crypto", binance: "BTCUSDT", coinbase: "BTC-USD" },
     { value: "PAXGUSDT", label: "XAU/USD (Ouro, via token PAXG)", short: "XAU", icon: "🥇", assetClass: "commodities", binance: "PAXGUSDT", coinbase: "PAXG-USD" },
@@ -13,19 +15,32 @@
     { value: "BNBUSDT", label: "BNB/USDT", short: "BNB", icon: "🔶", assetClass: "crypto", binance: "BNBUSDT" },
   ];
 
+  const TIMEFRAMES = [
+    { value: "1m", label: "1 minuto" },
+    { value: "3m", label: "3 minutos" },
+    { value: "5m", label: "5 minutos" },
+    { value: "15m", label: "15 minutos" },
+    { value: "30m", label: "30 minutos" },
+    { value: "1h", label: "1 hora" },
+    { value: "2h", label: "2 horas" },
+    { value: "4h", label: "4 horas" },
+    { value: "6h", label: "6 horas" },
+    { value: "1d", label: "1 dia" },
+    { value: "1w", label: "1 semana" },
+    { value: "1M", label: "1 mês" },
+  ];
+
+  const GRANULARITY_SEC = {
+    "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
+    "1h": 3600, "2h": 7200, "4h": 14400, "6h": 21600,
+    "1d": 86400, "1w": 604800, "1M": 2592000,
+  };
+
+  // Coinbase only supports a fixed set of granularities
+  const COINBASE_GRAN = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "6h": 21600, "1d": 86400 };
+
   const FETCH_TIMEOUT_MS = 7000;
   const WS_OPEN_TIMEOUT_MS = 7000;
-
-  function symbolInfo(value) {
-    return SYMBOLS.find((s) => s.value === value) || { short: value, icon: "📈", assetClass: "crypto" };
-  }
-
-  function tierSuffix(confidence) {
-    if (confidence >= 82) return "_FORTE";
-    if (confidence < 65) return "_FRACA";
-    return "";
-  }
-
   const RECONNECT_DELAY_MS = 8000;
 
   const EMA_FAST = 9;
@@ -33,21 +48,58 @@
   const RSI_PERIOD = 14;
   const ATR_PERIOD = 14;
   const MIN_CANDLES_TO_EVALUATE = 25;
-  const CONFIDENCE_THRESHOLD = 50;
+  const COOLDOWN_CANDLES = 2;
   const MAX_MARKERS = 80;
+
+  function symbolInfo(value) {
+    return SYMBOLS.find((s) => s.value === value) || { short: value, icon: "📈", assetClass: "crypto" };
+  }
+
+  function tierName(confidence) {
+    return T.tierName(confidence);
+  }
+
+  function tierLabel(confidence) {
+    return ` ${tierName(confidence)}`;
+  }
 
   const els = {
     statusDot: document.getElementById("statusDot"),
+    statusShort: document.getElementById("statusShort"),
     statusLine: document.getElementById("statusLine"),
-    symbolSelect: document.getElementById("symbolSelect"),
-    timeframeSelect: document.getElementById("timeframeSelect"),
+    statusDot2: document.getElementById("statusDot2"),
+    symbolSeg: document.getElementById("symbolSeg"),
+    timeframeSeg: document.getElementById("timeframeSeg"),
     soundToggle: document.getElementById("soundToggle"),
     signalCard: document.getElementById("signalCard"),
-    statTotal: document.getElementById("statTotal"),
-    statWinrate: document.getElementById("statWinrate"),
-    statConfidence: document.getElementById("statConfidence"),
+    metPrice: document.getElementById("metPrice"),
+    metSignals: document.getElementById("metSignals"),
+    metWinrate: document.getElementById("metWinrate"),
+    metEdge: document.getElementById("metEdge"),
+    metDD: document.getElementById("metDD"),
+    symName: document.getElementById("symName"),
+    symDot: document.getElementById("symDot"),
+    priceIcon: document.getElementById("priceIcon"),
     historyList: document.getElementById("historyList"),
     toast: document.getElementById("toast"),
+
+    mktTrend: document.getElementById("mktTrend"),
+    mktStructure: document.getElementById("mktStructure"),
+    mktEvent: document.getElementById("mktEvent"),
+    mktZones: document.getElementById("mktZones"),
+    mktPattern: document.getElementById("mktPattern"),
+    mktRsi: document.getElementById("mktRsi"),
+    mktRsiMini: document.getElementById("mktRsiMini"),
+    mktPatternMini: document.getElementById("mktPatternMini"),
+
+    mcCount: document.getElementById("mcCount"),
+    mcWinrate: document.getElementById("mcWinrate"),
+    mcEdge: document.getElementById("mcEdge"),
+    mcPF: document.getElementById("mcPF"),
+    mcPProfit: document.getElementById("mcPProfit"),
+    mcDD: document.getElementById("mcDD"),
+    mcRun: document.getElementById("mcRun"),
+    mcRisk: document.getElementById("mcRisk"),
   };
 
   // ---------------------------------------------------------------------
@@ -57,8 +109,8 @@
   const state = {
     symbol: SYMBOLS[0].value,
     timeframe: "5m",
-    candles: [], // closed candles
-    forming: null, // in-progress candle
+    candles: [],
+    forming: null,
     ema9: [],
     ema21: [],
     rsi: [],
@@ -66,12 +118,15 @@
     markers: [],
     openSignals: [],
     closedSignals: [],
+    closedR: [], // results per closed trade (bool = win)
+    lastSignalIndex: -1e4,
     soundEnabled: false,
     audioCtx: null,
     ws: null,
     reconnectTimer: null,
     activeProvider: null,
     avoidProvider: null,
+    lastSnap: null,
   };
 
   // ---------------------------------------------------------------------
@@ -129,203 +184,133 @@
   });
 
   // ---------------------------------------------------------------------
-  // Indicator math
+  // Indicator math (delegated to TradeCore)
   // ---------------------------------------------------------------------
-
-  function emaSeries(values, period) {
-    const k = 2 / (period + 1);
-    const out = new Array(values.length);
-    out[0] = values[0];
-    for (let i = 1; i < values.length; i++) {
-      out[i] = values[i] * k + out[i - 1] * (1 - k);
-    }
-    return out;
-  }
-
-  function rsiSeriesCalc(values, period) {
-    const out = new Array(values.length).fill(50);
-    if (values.length < 2) return out;
-    let avgGain = 0;
-    let avgLoss = 0;
-    for (let i = 1; i < values.length; i++) {
-      const change = values[i] - values[i - 1];
-      const gain = Math.max(change, 0);
-      const loss = Math.max(-change, 0);
-      if (i <= period) {
-        avgGain += gain;
-        avgLoss += loss;
-        if (i === period) {
-          avgGain /= period;
-          avgLoss /= period;
-          out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-        }
-      } else {
-        avgGain = (avgGain * (period - 1) + gain) / period;
-        avgLoss = (avgLoss * (period - 1) + loss) / period;
-        out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-      }
-    }
-    return out;
-  }
-
-  function atrSeriesCalc(candles, period) {
-    const out = new Array(candles.length).fill(0);
-    if (candles.length < 2) return out;
-    let atr = candles[0].high - candles[0].low;
-    out[0] = atr;
-    for (let i = 1; i < candles.length; i++) {
-      const c = candles[i];
-      const prevClose = candles[i - 1].close;
-      const tr = Math.max(c.high - c.low, Math.abs(c.high - prevClose), Math.abs(c.low - prevClose));
-      atr = i < period ? (atr * i + tr) / (i + 1) : (atr * (period - 1) + tr) / period;
-      out[i] = atr;
-    }
-    return out;
-  }
 
   function recomputeIndicators() {
     const closes = state.candles.map((c) => c.close);
-    state.ema9 = emaSeries(closes, EMA_FAST);
-    state.ema21 = emaSeries(closes, EMA_SLOW);
-    state.rsi = rsiSeriesCalc(closes, RSI_PERIOD);
-    state.atr = atrSeriesCalc(state.candles, ATR_PERIOD);
-  }
-
-  function clamp(v, lo, hi) {
-    return Math.max(lo, Math.min(hi, v));
+    state.ema9 = T.emaSeries(closes, EMA_FAST);
+    state.ema21 = T.emaSeries(closes, EMA_SLOW);
+    state.rsi = T.rsiSeries(closes, RSI_PERIOD);
+    state.atr = T.atrSeries(state.candles, ATR_PERIOD);
   }
 
   // ---------------------------------------------------------------------
-  // Signal engine
+  // Signal engine (SMC + price action + patterns, scored by confluence)
   // ---------------------------------------------------------------------
 
-  function evaluateSignal() {
-    const n = state.candles.length;
-    if (n < MIN_CANDLES_TO_EVALUATE) return;
-    const signal = evaluateSignalAt(n - 1);
-    if (signal) fireSignal(signal);
-  }
-
-  function evaluateSignalAt(i) {
-    const prevFast = state.ema9[i - 1];
-    const prevSlow = state.ema21[i - 1];
-    const fast = state.ema9[i];
-    const slow = state.ema21[i];
-    const rsi = state.rsi[i];
-    const price = state.candles[i].close;
-    const atr = state.atr[i] || price * 0.004;
-
-    const volumes = state.candles.slice(Math.max(0, i - 19), i + 1).map((c) => c.volume || 0);
-    const volAvg = volumes.reduce((a, b) => a + b, 0) / volumes.length || 1;
-    const vol = state.candles[i].volume || volAvg;
-
-    const crossUp = prevFast <= prevSlow && fast > slow;
-    const crossDown = prevFast >= prevSlow && fast < slow;
-    if (!crossUp && !crossDown) return;
-
-    // Separation between the EMAs is ~0 right at the crossing candle by
-    // definition, so it is not a useful confidence signal here. Instead use
-    // the fast EMA's recent slope as a proxy for how strong the move into
-    // the cross was.
-    const lookback = Math.max(0, i - 3);
-    const momentumBps = ((fast - state.ema9[lookback]) / price) * 10000;
-    const volBonus = vol > volAvg * 1.1 ? 8 : vol < volAvg * 0.7 ? -4 : 0;
-
-    let confidence;
-    let side;
-    if (crossUp) {
-      side = "buy";
-      const rsiBonus = rsi < 70 ? ((70 - rsi) / 70) * 12 : -8;
-      const momentumBonus = clamp(momentumBps / 3, -8, 14);
-      confidence = clamp(62 + rsiBonus + momentumBonus + volBonus, 30, 96);
-    } else {
-      side = "sell";
-      const rsiBonus = rsi > 30 ? ((rsi - 30) / 70) * 12 : -8;
-      const momentumBonus = clamp(-momentumBps / 3, -8, 14);
-      confidence = clamp(62 + rsiBonus + momentumBonus + volBonus, 30, 96);
-    }
-
-    if (confidence < CONFIDENCE_THRESHOLD) return;
-
-    const sl = side === "buy" ? price - atr * 1.5 : price + atr * 1.5;
-    const tp = side === "buy" ? price + atr * 2.2 : price - atr * 2.2;
-
-    const signal = {
-      id: `${state.candles[i].time}-${side}`,
-      time: state.candles[i].time,
-      side,
-      entry: price,
-      sl,
-      tp,
-      confidence: Math.round(confidence),
-      status: "open",
-      symbol: state.symbol,
-      timeframe: state.timeframe,
-    };
-
-    return signal;
+  function currentSnapshot() {
+    recomputeIndicators();
+    return T.analyze(state.candles, state.atr, state.rsi);
   }
 
   function fireSignal(signal) {
     state.openSignals.push(signal);
+    state.lastSignalIndex = state.candles.length - 1;
     state.markers.push({
       time: signal.time,
       position: signal.side === "buy" ? "belowBar" : "aboveBar",
       color: signal.side === "buy" ? "#2ee6a6" : "#ef5350",
       shape: signal.side === "buy" ? "arrowUp" : "arrowDown",
-      text: `${signal.side === "buy" ? "COMPRA" : "VENDA"}${tierSuffix(signal.confidence)} ${signal.confidence}%`,
+      text: `${signal.side === "buy" ? "COMPRA" : "VENDA"}${tierLabel(signal.confidence)} ${signal.confidence}%`,
     });
     if (state.markers.length > MAX_MARKERS) state.markers.shift();
     candleSeries.setMarkers(state.markers);
+    renderZones();
 
     renderSignalCard(signal);
     addHistoryItem(signal);
     playAlertSound(signal.side);
     showToast(
-      `${signal.side === "buy" ? "🟢 ENTRADA DE COMPRA" : "🔴 ENTRADA DE VENDA"} — ${formatPrice(signal.entry)} (confiança ${signal.confidence}%)`
+      `${signal.side === "buy" ? "🟢 ENTRADA DE COMPRA" : "🔴 ENTRADA DE VENDA"} — ${signal.setup} — ${formatPrice(signal.entry)} (confiança ${signal.confidence}%)`
     );
+  }
+
+  function evaluateCurrentCandle() {
+    if (state.candles.length < MIN_CANDLES_TO_EVALUATE) return;
+    const snap = currentSnapshot();
+    state.lastSnap = snap;
+    renderZones();
+
+    if (state.candles.length - state.lastSignalIndex < COOLDOWN_CANDLES) {
+      updateAnalysisPanel(snap, state.rsi[state.rsi.length - 1]);
+      return;
+    }
+    const sig = T.buildSignal(state.candles, state.atr, state.rsi, state.ema21, snap);
+    if (sig) {
+      const i = state.candles.length - 1;
+      sig.time = state.candles[i].time;
+      sig.id = `${sig.time}-${sig.side}`;
+      sig.symbol = state.symbol;
+      sig.timeframe = state.timeframe;
+      fireSignal(sig);
+    }
+    updateAnalysisPanel(snap, state.rsi[state.rsi.length - 1]);
+  }
+
+  function resolveAgainstHistory(signal, start) {
+    let status = "open";
+    for (let j = start; j < state.candles.length; j++) {
+      const c = state.candles[j];
+      if (signal.side === "buy") {
+        if (c.high >= signal.tp) { status = "win"; break; }
+        if (c.low <= signal.sl) { status = "loss"; break; }
+      } else {
+        if (c.low <= signal.tp) { status = "win"; break; }
+        if (c.high >= signal.sl) { status = "loss"; break; }
+      }
+    }
+    return status;
   }
 
   function backfillHistoricalSignals() {
     const n = state.candles.length;
+    let lastSignalIndex = -COOLDOWN_CANDLES - 1;
     let lastSignal = null;
-    for (let i = MIN_CANDLES_TO_EVALUATE; i < n; i++) {
-      const signal = evaluateSignalAt(i);
-      if (!signal) continue;
 
-      let status = "open";
-      for (let j = i + 1; j < n; j++) {
-        const c = state.candles[j];
-        if (signal.side === "buy") {
-          if (c.high >= signal.tp) { status = "win"; break; }
-          if (c.low <= signal.sl) { status = "loss"; break; }
-        } else {
-          if (c.low <= signal.tp) { status = "win"; break; }
-          if (c.high >= signal.sl) { status = "loss"; break; }
-        }
-      }
-      signal.status = status;
+    for (let i = MIN_CANDLES_TO_EVALUATE; i < n; i++) {
+      if (i - lastSignalIndex < COOLDOWN_CANDLES) continue;
+      const sub = state.candles.slice(0, i + 1);
+      const closes = sub.map((c) => c.close);
+      const a = T.atrSeries(sub, ATR_PERIOD);
+      const rsi = T.rsiSeries(closes, RSI_PERIOD);
+      const e21 = T.emaSeries(closes, EMA_SLOW);
+      const snap = T.analyze(sub, a, rsi);
+      const sig = T.buildSignal(sub, a, rsi, e21, snap);
+      if (!sig) continue;
+
+      lastSignalIndex = i;
+      sig.time = sub[i].time;
+      sig.id = `${sig.time}-${sig.side}`;
+      sig.symbol = state.symbol;
+      sig.timeframe = state.timeframe;
+
+      sig.status = resolveAgainstHistory(sig, i + 1);
 
       state.markers.push({
-        time: signal.time,
-        position: signal.side === "buy" ? "belowBar" : "aboveBar",
-        color: signal.side === "buy" ? "#2ee6a6" : "#ef5350",
-        shape: signal.side === "buy" ? "arrowUp" : "arrowDown",
-        text: `${signal.side === "buy" ? "COMPRA" : "VENDA"}${tierSuffix(signal.confidence)} ${signal.confidence}%`,
+        time: sig.time,
+        position: sig.side === "buy" ? "belowBar" : "aboveBar",
+        color: sig.side === "buy" ? "#2ee6a6" : "#ef5350",
+        shape: sig.side === "buy" ? "arrowUp" : "arrowDown",
+        text: `${sig.side === "buy" ? "COMPRA" : "VENDA"}${tierLabel(sig.confidence)} ${sig.confidence}%`,
       });
-      addHistoryItem(signal);
-      if (status === "open") {
-        state.openSignals.push(signal);
+
+      addHistoryItem(sig);
+      if (sig.status === "open") {
+        state.openSignals.push(sig);
       } else {
-        state.closedSignals.push(signal);
-        updateHistoryItemResult(signal);
+        state.closedSignals.push(sig);
+        state.closedR.push(sig.status === "win");
+        updateHistoryItemResult(sig);
       }
-      lastSignal = signal;
+      lastSignal = sig;
     }
 
     if (state.markers.length > MAX_MARKERS) state.markers = state.markers.slice(-MAX_MARKERS);
     candleSeries.setMarkers(state.markers);
+    renderZones();
     updateStats();
+    updateMonteCarlo();
     if (lastSignal) renderSignalCard(lastSignal);
   }
 
@@ -344,13 +329,121 @@
       if (result) {
         s.status = result;
         state.closedSignals.push(s);
+        state.closedR.push(result === "win");
         updateHistoryItemResult(s);
         updateStats();
+        updateMonteCarlo();
       } else {
         stillOpen.push(s);
       }
     }
     state.openSignals = stillOpen;
+  }
+
+  // ---------------------------------------------------------------------
+  // Zone markers (Order Blocks / FVGs) merged with signal markers
+  // ---------------------------------------------------------------------
+
+  function buildZoneMarkers(snap) {
+    const out = [];
+    const pick = (zones) => zones.slice(-5);
+    function push(zones, label, color, position) {
+      pick(zones).forEach((z) => {
+        if (z && z.time) out.push({ time: z.time, position: position, color: color, shape: "circle", text: label });
+      });
+    }
+    push(snap.ob.bull, "OB+", "#2ee6a6", "belowBar");
+    push(snap.ob.bear, "OB−", "#ef5350", "aboveBar");
+    push(snap.fvg.bull, "FVG+", "#4f8cff", "belowBar");
+    push(snap.fvg.bear, "FVG−", "#f5b942", "aboveBar");
+    return out;
+  }
+
+  function renderZones() {
+    if (!state.lastSnap || !state.candles.length) return;
+    const zoneMk = buildZoneMarkers(state.lastSnap);
+    const merged = [...zoneMk, ...state.markers];
+    merged.sort((a, b) => a.time - b.time);
+    candleSeries.setMarkers(merged.slice(-160));
+  }
+
+  // ---------------------------------------------------------------------
+  // Analysis panel
+  // ---------------------------------------------------------------------
+
+  function setText(el, v) {
+    if (el) el.textContent = v;
+  }
+
+  function updateAnalysisPanel(snap, rsiNow) {
+    const st = snap.structure;
+    if (st && st.trend === "bull") setText(els.mktTrend, "Alta (HH/HL)");
+    else if (st && st.trend === "bear") setText(els.mktTrend, "Baixa (LL/LH)");
+    else setText(els.mktTrend, "Lateral");
+
+    if (st) {
+      const hl = st.lastHigh;
+      const ll = st.lastLow;
+      const hiTxt = hl ? `${formatPrice(hl.price)} @${new Date(hl.time * 1000).toLocaleTimeString("pt-BR")}` : "—";
+      const loTxt = ll ? `${formatPrice(ll.price)} @${new Date(ll.time * 1000).toLocaleTimeString("pt-BR")}` : "—";
+      setText(els.mktStructure, `Topo ${hiTxt} · Fundo ${loTxt}`);
+    } else {
+      setText(els.mktStructure, "—");
+    }
+
+    const ev = snap.events;
+    if (ev.choch) {
+      setText(els.mktEvent, `CHoCH ${ev.choch.dir === "buy" ? "altista" : "baixista"} @ ${new Date(ev.choch.time * 1000).toLocaleTimeString("pt-BR")}`);
+    } else if (ev.bos) {
+      setText(els.mktEvent, `BOS ${ev.bos.dir === "buy" ? "altista" : "baixista"} @ ${new Date(ev.bos.time * 1000).toLocaleTimeString("pt-BR")}`);
+    } else if (snap.sweep) {
+      setText(els.mktEvent, `Sweep de liquidez (${snap.sweep.dir === "buy" ? "lado baixo" : "lado alto"}) @ ${new Date(snap.sweep.time * 1000).toLocaleTimeString("pt-BR")}`);
+    } else {
+      setText(els.mktEvent, "Sem quebra estrutural recente");
+    }
+
+    setText(
+      els.mktZones,
+      `OB compra ${snap.ob.bull.length} · OB venda ${snap.ob.bear.length} · FVG+ ${snap.fvg.bull.length} · FVG− ${snap.fvg.bear.length}`
+    );
+
+    const pat = snap.patterns.find((p) => p.dir);
+    setText(els.mktPattern, pat ? pat.name : "Sem padrão na última vela");
+    setText(els.mktPatternMini, pat ? pat.name : "—");
+
+    setText(els.mktRsi, rsiNow != null ? `RSI(14) = ${rsiNow.toFixed(1)}` : "—");
+    setText(els.mktRsiMini, rsiNow != null ? rsiNow.toFixed(1) : "—");
+  }
+
+  // ---------------------------------------------------------------------
+  // Monte Carlo panel
+  // ---------------------------------------------------------------------
+
+  function updateMonteCarlo() {
+    const mc = T.monteCarlo(state.closedR);
+    if (!mc) {
+      setText(els.mcCount, "0 trades");
+      setText(els.mcWinrate, "—");
+      setText(els.mcEdge, "—");
+      setText(els.mcPF, "—");
+      setText(els.mcPProfit, "—");
+      setText(els.mcDD, "—");
+      setText(els.mcRun, "—");
+      setText(els.mcRisk, `Risco fixo 1% · RR ${T.CONF.RR.toFixed(2)} · ${T.CONF.MC_SIMS} simulações`);
+      setText(els.metEdge, "—");
+      setText(els.metDD, "—");
+      return;
+    }
+    setText(els.mcCount, `${mc.n} trades fechados`);
+    setText(els.mcWinrate, `${(mc.winRate * 100).toFixed(1)}%`);
+    setText(els.mcEdge, `${mc.edgeR >= 0 ? "+" : ""}${mc.edgeR.toFixed(2)} R`);
+    setText(els.mcPF, mc.profitFactor === Infinity ? "∞" : mc.profitFactor.toFixed(2));
+    setText(els.mcPProfit, `${(mc.pProfit * 100).toFixed(0)}%`);
+    setText(els.mcDD, `médio ${mc.avgMaxDD.toFixed(1)}% · p95 ${mc.dd95.toFixed(1)}%`);
+    setText(els.mcRun, `p95 ${mc.run95} seguidas · máx ${mc.worstRun}`);
+    setText(els.mcRisk, `Risco fixo 1% · RR ${T.CONF.RR.toFixed(2)} · ${T.CONF.MC_SIMS} simulações`);
+    setText(els.metEdge, `${mc.edgeR >= 0 ? "+" : ""}${mc.edgeR.toFixed(2)} R`);
+    setText(els.metDD, `−${mc.dd95.toFixed(1)}%`);
   }
 
   // ---------------------------------------------------------------------
@@ -364,12 +457,15 @@
   }
 
   function renderSignalCard(signal) {
-    els.signalCard.className = `signal-card ${signal.side}`;
-    const tagLabel = `${signal.side === "buy" ? "▲ ENTRADA COMPRA" : "▼ ENTRADA VENDA"}${tierSuffix(signal.confidence)}`;
-    const barColor = signal.side === "buy" ? "#2ee6a6" : "#ef5350";
+    els.signalCard.className = `card signal-strip ${signal.side}`;
+    const tagLabel = `${signal.side === "buy" ? "▲ ENTRADA COMPRA" : "▼ ENTRADA VENDA"}${tierLabel(signal.confidence)}`;
+    const chips = (signal.reasons || [])
+      .map((r) => `<span class="chip">${r}</span>`)
+      .join("");
     els.signalCard.innerHTML = `
       <div class="signal-body">
         <span class="signal-tag ${signal.side}">${tagLabel}</span>
+        <div class="signal-setup"><span>Setup</span>${signal.setup || "—"}</div>
         <div class="signal-price">${formatPrice(signal.entry)}</div>
         <div class="signal-grid">
           <div><span>Stop Loss</span>${formatPrice(signal.sl)}</div>
@@ -377,9 +473,7 @@
           <div><span>Confiança</span>${signal.confidence}%</div>
           <div><span>Horário</span>${new Date(signal.time * 1000).toLocaleTimeString("pt-BR")}</div>
         </div>
-        <div class="signal-confidence-bar">
-          <div class="signal-confidence-fill" style="width:${signal.confidence}%; background:${barColor}"></div>
-        </div>
+        ${chips ? `<div class="signal-reasons">${chips}</div>` : ""}
       </div>
     `;
   }
@@ -389,27 +483,30 @@
       els.historyList.innerHTML = "";
     }
     const info = symbolInfo(signal.symbol);
-    const tierLabel = `${signal.side === "buy" ? "COMPRA" : "VENDA"}${tierSuffix(signal.confidence)}`;
-    const row = document.createElement("div");
-    row.className = `history-item ${signal.side}`;
-    row.id = `hist-${signal.id}`;
-    row.innerHTML = `
-      <span class="asset-icon">${info.icon}</span>
-      <div class="asset-info">
-        <div class="asset-name">${info.short}</div>
-        <div class="asset-meta">${info.assetClass} • ${signal.timeframe}</div>
-        <div class="tier-row">
-          <span class="tier-pill ${signal.side}">${tierLabel}</span>
-          <span class="tier-strength">${signal.confidence}% força</span>
+    const tierLabelTxt = `${signal.side === "buy" ? "COMPRA" : "VENDA"}${tierLabel(signal.confidence)}`;
+    const tr = document.createElement("tr");
+    tr.id = `hist-${signal.id}`;
+    tr.innerHTML = `
+      <td class="pl">
+        <div class="asset-cell">
+          <span class="asset-icon">${info.icon}</span>
+          <div>
+            <div>${info.short}</div>
+            <div class="asset-sub">${info.assetClass} • ${signal.timeframe}</div>
+          </div>
         </div>
-      </div>
-      <div class="side-col-meta">
-        <div class="price-val">${formatPrice(signal.entry)}</div>
-        <div class="time-val">${new Date(signal.time * 1000).toLocaleTimeString("pt-BR")}</div>
-        <span class="result open">ABERTO</span>
-      </div>
+      </td>
+      <td>
+        <span class="tier-pill ${signal.side}">${tierLabelTxt}</span>
+        <div class="asset-sub">${signal.setup || "—"}</div>
+      </td>
+      <td class="text-right">${formatPrice(signal.entry)}</td>
+      <td class="text-right">${formatPrice(signal.sl)}</td>
+      <td class="text-right">${formatPrice(signal.tp)}</td>
+      <td class="text-right">${signal.confidence}%</td>
+      <td class="text-right pr"><span class="result open">ABERTO</span></td>
     `;
-    els.historyList.prepend(row);
+    els.historyList.prepend(tr);
     updateStats();
   }
 
@@ -423,19 +520,12 @@
 
   function updateStats() {
     const total = state.openSignals.length + state.closedSignals.length;
-    els.statTotal.textContent = total;
+    setText(els.metSignals, total);
     if (state.closedSignals.length) {
       const wins = state.closedSignals.filter((s) => s.status === "win").length;
-      els.statWinrate.textContent = `${Math.round((wins / state.closedSignals.length) * 100)}%`;
+      setText(els.metWinrate, `${Math.round((wins / state.closedSignals.length) * 100)}%`);
     } else {
-      els.statWinrate.textContent = "—";
-    }
-    const all = [...state.openSignals, ...state.closedSignals];
-    if (all.length) {
-      const avg = all.reduce((a, s) => a + s.confidence, 0) / all.length;
-      els.statConfidence.textContent = `${Math.round(avg)}%`;
-    } else {
-      els.statConfidence.textContent = "—";
+      setText(els.metWinrate, "—");
     }
   }
 
@@ -443,11 +533,15 @@
     state.markers = [];
     state.openSignals = [];
     state.closedSignals = [];
+    state.closedR = [];
+    state.lastSignalIndex = -1e4;
+    state.lastSnap = null;
     candleSeries.setMarkers([]);
-    els.signalCard.className = "signal-card";
+    els.signalCard.className = "card signal-strip";
     els.signalCard.innerHTML = `<div class="signal-card-empty">Aguardando o próximo sinal de entrada…</div>`;
-    els.historyList.innerHTML = `<div class="history-empty">Nenhuma entrada marcada ainda.</div>`;
+    els.historyList.innerHTML = `<tr><td colspan="7"><div class="history-empty">Nenhuma entrada marcada ainda.</div></td></tr>`;
     updateStats();
+    updateMonteCarlo();
   }
 
   let toastTimer = null;
@@ -460,6 +554,8 @@
 
   function setStatus(text, mode) {
     els.statusLine.textContent = text;
+    setText(els.statusShort, text);
+    if (els.statusDot2) els.statusDot2.className = "status-dot" + (mode === "down" ? " down" : "");
     els.statusDot.className = "brand-dot" + (mode ? ` ${mode}` : "");
   }
 
@@ -508,6 +604,7 @@
   // ---------------------------------------------------------------------
 
   function applyFormingCandle(candle) {
+    setText(els.metPrice, formatPrice(candle.close));
     candleSeries.update(candle);
     checkOpenSignals(candle.close);
   }
@@ -515,6 +612,7 @@
   function applyClosedCandle(candle) {
     state.candles.push(candle);
     if (state.candles.length > 500) state.candles.shift();
+    setText(els.metPrice, formatPrice(candle.close));
     candleSeries.update(candle);
     recomputeIndicators();
 
@@ -524,12 +622,17 @@
     rsiSeries.update({ time: candle.time, value: state.rsi[i] });
 
     checkOpenSignals(candle.close);
-    evaluateSignal();
+    evaluateCurrentCandle();
     setStatus(statusMessage(), "live");
   }
 
   function seedHistory(candles) {
     state.candles = candles;
+    const info = symbolInfo(state.symbol);
+    setText(els.symName, info.label);
+    setText(els.symDot, info.icon);
+    setText(els.priceIcon, info.icon);
+    if (candles.length) setText(els.metPrice, formatPrice(candles[candles.length - 1].close));
     recomputeIndicators();
     candleSeries.setData(candles);
     emaFastSeries.setData(candles.map((c, i) => ({ time: c.time, value: state.ema9[i] })));
@@ -537,6 +640,11 @@
     rsiSeries.setData(candles.map((c, i) => ({ time: c.time, value: state.rsi[i] })));
     priceChart.timeScale().fitContent();
     rsiChart.timeScale().fitContent();
+
+    // initial zone + analysis render
+    const snap = currentSnapshot();
+    renderZones(snap);
+    updateAnalysisPanel(snap, state.rsi[state.rsi.length - 1]);
   }
 
   function statusMessage() {
@@ -556,8 +664,6 @@
     const timer = setTimeout(() => controller.abort(), ms);
     return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
   }
-
-  const GRANULARITY_SEC = { "1m": 60, "5m": 300, "15m": 900 };
 
   const PROVIDERS = {
     binance: {
@@ -608,7 +714,8 @@
     coinbase: {
       label: "Coinbase",
       async fetchHistory(productSymbol, timeframe) {
-        const granularity = GRANULARITY_SEC[timeframe] || 300;
+        const granularity = COINBASE_GRAN[timeframe];
+        if (!granularity) throw new Error("timeframe não suportado pela Coinbase");
         const url = `https://api.exchange.coinbase.com/products/${productSymbol}/candles?granularity=${granularity}`;
         const res = await fetchJsonWithTimeout(url, FETCH_TIMEOUT_MS);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -621,7 +728,8 @@
           .slice(-150);
       },
       connectStream(productSymbol, timeframe, handlers) {
-        const granularity = GRANULARITY_SEC[timeframe] || 300;
+        const granularity = COINBASE_GRAN[timeframe];
+        if (!granularity) throw new Error("timeframe não suportado pela Coinbase");
         const ws = new WebSocket("wss://ws-feed.exchange.coinbase.com");
         let forming = null;
         ws.onopen = () => {
@@ -672,7 +780,9 @@
   async function startLive() {
     stopLive();
     const info = symbolInfo(state.symbol);
-    let providerIds = ["binance", "coinbase"].filter((id) => info[id]);
+    let providerIds = ["binance", "coinbase"].filter(
+      (id) => !!info[id] && !(id === "coinbase" && !COINBASE_GRAN[state.timeframe])
+    );
     if (state.avoidProvider && providerIds.length > 1) {
       providerIds = providerIds.filter((id) => id !== state.avoidProvider).concat(providerIds.filter((id) => id === state.avoidProvider));
     }
@@ -752,29 +862,80 @@
   // Controls wiring
   // ---------------------------------------------------------------------
 
-  function populateSymbolOptions() {
-    els.symbolSelect.innerHTML = SYMBOLS.map((s) => `<option value="${s.value}">${s.label}</option>`).join("");
-    els.symbolSelect.value = state.symbol;
+  function renderSymbolPills() {
+    els.symbolSeg.innerHTML = "";
+    SYMBOLS.forEach((s) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = s.short;
+      b.title = s.label;
+      if (s.value === state.symbol) b.classList.add("on");
+      b.addEventListener("click", () => {
+        if (state.symbol === s.value) return;
+        state.symbol = s.value;
+        renderSymbolPills();
+        updateSymHeader();
+        startLive();
+      });
+      els.symbolSeg.appendChild(b);
+    });
   }
 
-  function restart() {
-    startLive();
+  function renderTimeframePills() {
+    els.timeframeSeg.innerHTML = "";
+    TIMEFRAMES.forEach((t) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = t.value;
+      b.title = t.label;
+      if (t.value === state.timeframe) b.classList.add("on");
+      b.addEventListener("click", () => {
+        if (state.timeframe === t.value) return;
+        state.timeframe = t.value;
+        renderTimeframePills();
+        startLive();
+      });
+      els.timeframeSeg.appendChild(b);
+    });
   }
 
-  els.symbolSelect.addEventListener("change", () => {
-    state.symbol = els.symbolSelect.value;
-    restart();
-  });
+  function updateSymHeader() {
+    const info = symbolInfo(state.symbol);
+    setText(els.symName, info.label);
+    setText(els.symDot, info.icon);
+    setText(els.priceIcon, info.icon);
+  }
 
-  els.timeframeSelect.addEventListener("change", () => {
-    state.timeframe = els.timeframeSelect.value;
-    restart();
+  document.querySelectorAll(".fin-nav-item[data-scroll]").forEach((item) => {
+    item.addEventListener("click", () => {
+      const target = document.querySelector(item.dataset.scroll);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        document.querySelectorAll(".fin-nav-item").forEach((n) => n.classList.remove("active"));
+        item.classList.add("active");
+      }
+    });
   });
 
   // ---------------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------------
 
-  populateSymbolOptions();
+  renderSymbolPills();
+  renderTimeframePills();
+  updateSymHeader();
   startLive();
+
+  // debug/test hook
+  window.__dayTradeDebug = {
+    candles: () => state.candles.length,
+    markers: () => state.markers.length,
+    openSignals: () => state.openSignals.length,
+    status: () => els.statusLine.textContent,
+    mktZones: () => (els.mktZones ? els.mktZones.textContent : ""),
+    mktTrend: () => (els.mktTrend ? els.mktTrend.textContent : ""),
+    mcEdge: () => (els.mcEdge ? els.mcEdge.textContent : ""),
+    rsi: () => (state.rsi.length ? state.rsi[state.rsi.length - 1].toFixed(1) : "—"),
+    provider: () => (state.activeProvider ? state.activeProvider : "?"),
+  };
 })();
