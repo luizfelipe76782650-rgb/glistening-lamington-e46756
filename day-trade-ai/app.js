@@ -138,7 +138,6 @@
     avoidProvider: null,
     lastSnap: null,
     htfTrend: null,
-    fibLines: [],
     killzoneOnly: false,
   };
 
@@ -389,88 +388,6 @@
     const merged = [...zoneMk, ...state.markers];
     merged.sort((a, b) => a.time - b.time);
     candleSeries.setMarkers(merged.slice(-160));
-    renderFibLevels();
-  }
-
-  const FIB_LEVELS = [
-    { r: 0, color: "#8a92a6" },
-    { r: 0.236, color: "#4ecdc4" },
-    { r: 0.382, color: "#f5b942" },
-    { r: 0.5, color: "#e8e8e8" },
-    { r: 0.618, color: "#4f8cff" },
-    { r: 0.786, color: "#c792ea" },
-    { r: 1, color: "#8a92a6" },
-  ];
-
-  function clearFibLines() {
-    state.fibLines.forEach((s) => {
-      try { priceChart.removeSeries(s); } catch (e) { /* already gone */ }
-    });
-    state.fibLines = [];
-  }
-
-  function renderFibLevels() {
-    clearFibLines();
-    const st = state.lastSnap && state.lastSnap.structure;
-    if (!st || !st.lastHigh || !st.lastLow || !state.candles.length) return;
-    const hi = st.lastHigh.price;
-    const lo = st.lastLow.price;
-    if (!(hi > lo)) return;
-    const diff = hi - lo;
-    const upLeg = st.lastHigh.i > st.lastLow.i;
-    const startTime = Math.min(st.lastHigh.time, st.lastLow.time);
-    const endTime = state.candles[state.candles.length - 1].time;
-    if (endTime <= startTime) return;
-
-    const priceAt = (r) => (upLeg ? hi - r * diff : lo + r * diff);
-    const levelPrices = FIB_LEVELS.map((l) => priceAt(l.r));
-
-    // Shaded bands between consecutive levels, bounded to the swing's time range.
-    for (let i = 0; i < FIB_LEVELS.length - 1; i++) {
-      const top = Math.max(levelPrices[i], levelPrices[i + 1]);
-      const bottom = Math.min(levelPrices[i], levelPrices[i + 1]);
-      const band = priceChart.addAreaSeries({
-        topColor: hexToRgba(FIB_LEVELS[i + 1].color, 0.16),
-        bottomColor: hexToRgba(FIB_LEVELS[i + 1].color, 0.16),
-        lineVisible: false,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-        baseValue: { type: "price", price: bottom },
-      });
-      band.setData([
-        { time: startTime, value: top },
-        { time: endTime, value: top },
-      ]);
-      state.fibLines.push(band);
-    }
-
-    // The level lines themselves, each labeled with its ratio and price.
-    FIB_LEVELS.forEach((l, i) => {
-      const price = levelPrices[i];
-      const line = priceChart.addLineSeries({
-        color: l.color,
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        lastValueVisible: true,
-        priceLineVisible: false,
-        crosshairMarkerVisible: false,
-        title: `Fib ${l.r}`,
-      });
-      line.setData([
-        { time: startTime, value: price },
-        { time: endTime, value: price },
-      ]);
-      state.fibLines.push(line);
-    });
-  }
-
-  function hexToRgba(hex, alpha) {
-    const n = parseInt(hex.replace("#", ""), 16);
-    const r = (n >> 16) & 255;
-    const g = (n >> 8) & 255;
-    const b = n & 255;
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
   function pulseScan() {
