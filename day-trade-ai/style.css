@@ -61,6 +61,43 @@ body {
   -webkit-backdrop-filter: blur(40px);
 }
 
+@media (max-width: 640px) {
+  .fin-header {
+    padding: 12px 14px;
+    gap: 8px;
+  }
+
+  .fin-brand-tag {
+    display: none;
+  }
+
+  .fin-header-actions {
+    gap: 6px;
+  }
+
+  .conn-pill {
+    max-width: 120px;
+    padding: 5px 9px;
+  }
+
+  .conn-pill #statusShort {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .fin-icon-btn {
+    padding: 7px 9px;
+    font-size: 14px;
+  }
+
+  .fin-avatar {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+}
+
 .fin-brand {
   display: flex;
   align-items: center;
