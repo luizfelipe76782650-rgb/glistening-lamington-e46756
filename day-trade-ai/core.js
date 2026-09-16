@@ -15,8 +15,8 @@
     OB_MAX_ZONES: 8,
     FVG_MAX_ZONES: 8,
     SWEEP_LOOKBACK: 6,
-    ACCEPT_CORE: 2, // min core confluences (sweep/zone/pattern) to emit
-    SCORE_MIN: 70,
+    ACCEPT_CORE: 3, // min core confluences (sweep/zone/pattern) to emit
+    SCORE_MIN: 80,
     REQUIRE_ZONE_OR_SWEEP: true, // every signal must have a zone retest or liquidity sweep
     SL_ATR: 1.3,
     TP_ATR: 2.4,
@@ -575,8 +575,8 @@
   }
 
   function tierName(confidence) {
-    if (confidence >= 85) return "FORTE";
-    if (confidence >= 70) return "MÉDIO";
+    if (confidence >= 90) return "FORTE";
+    if (confidence >= 80) return "MÉDIO";
     return "FRACA";
   }
 

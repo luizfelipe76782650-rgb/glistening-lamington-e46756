@@ -48,7 +48,7 @@
   const RSI_PERIOD = 14;
   const ATR_PERIOD = 14;
   const MIN_CANDLES_TO_EVALUATE = 25;
-  const COOLDOWN_CANDLES = 2;
+  const COOLDOWN_CANDLES = 8;
   const MAX_MARKERS = 80;
 
   function symbolInfo(value) {
