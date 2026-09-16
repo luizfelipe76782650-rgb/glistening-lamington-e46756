@@ -5,24 +5,15 @@
   // Config
   // ---------------------------------------------------------------------
 
-  const SYMBOLS = {
-    demo: [
-      { value: "DEMO-CRYPTO", label: "Cripto simulada (BTC-like)", base: 61000, vol: 0.0016 },
-      { value: "DEMO-XAU", label: "Ouro simulado (XAU/USD)", base: 2650, vol: 0.0008 },
-      { value: "DEMO-FX", label: "Forex simulado (EUR/USD)", base: 1.0852, vol: 0.00045 },
-      { value: "DEMO-STOCK", label: "Ação simulada (PETR4-like)", base: 38.2, vol: 0.002 },
-    ],
-    binance: [
-      { value: "BTCUSDT", label: "BTC/USDT" },
-      { value: "PAXGUSDT", label: "XAU/USD (Ouro, via token PAXG)" },
-      { value: "ETHUSDT", label: "ETH/USDT" },
-      { value: "SOLUSDT", label: "SOL/USDT" },
-      { value: "BNBUSDT", label: "BNB/USDT" },
-    ],
-  };
+  const SYMBOLS = [
+    { value: "BTCUSDT", label: "BTC/USDT" },
+    { value: "PAXGUSDT", label: "XAU/USD (Ouro, via token PAXG)" },
+    { value: "ETHUSDT", label: "ETH/USDT" },
+    { value: "SOLUSDT", label: "SOL/USDT" },
+    { value: "BNBUSDT", label: "BNB/USDT" },
+  ];
 
-  const DEMO_CANDLE_DURATION_MS = { "1m": 4000, "5m": 6000, "15m": 9000 };
-  const TICK_MS = 350;
+  const RECONNECT_DELAY_MS = 8000;
 
   const EMA_FAST = 9;
   const EMA_SLOW = 21;
@@ -35,7 +26,6 @@
   const els = {
     statusDot: document.getElementById("statusDot"),
     statusLine: document.getElementById("statusLine"),
-    sourceSelect: document.getElementById("sourceSelect"),
     symbolSelect: document.getElementById("symbolSelect"),
     timeframeSelect: document.getElementById("timeframeSelect"),
     soundToggle: document.getElementById("soundToggle"),
@@ -52,8 +42,7 @@
   // ---------------------------------------------------------------------
 
   const state = {
-    source: "demo",
-    symbol: SYMBOLS.demo[0].value,
+    symbol: SYMBOLS[0].value,
     timeframe: "5m",
     candles: [], // closed candles
     forming: null, // in-progress candle
@@ -66,9 +55,8 @@
     closedSignals: [],
     soundEnabled: false,
     audioCtx: null,
-    demo: null, // { timer, price, drift, sinceDrift }
     ws: null,
-    fallbackTriggered: false,
+    reconnectTimer: null,
   };
 
   // ---------------------------------------------------------------------
@@ -442,7 +430,7 @@
   els.soundToggle.textContent = "🔕";
 
   // ---------------------------------------------------------------------
-  // Candle application (shared by demo + live)
+  // Candle application
   // ---------------------------------------------------------------------
 
   function applyFormingCandle(candle) {
@@ -463,7 +451,7 @@
 
     checkOpenSignals(candle.close);
     evaluateSignal();
-    setStatus(statusMessage(), state.source === "binance" ? "live" : undefined);
+    setStatus(statusMessage(), "live");
   }
 
   function seedHistory(candles) {
@@ -478,101 +466,9 @@
   }
 
   function statusMessage() {
-    const symLabel = (SYMBOLS[state.source].find((s) => s.value === state.symbol) || {}).label || state.symbol;
-    const src = state.source === "binance" ? "Ao vivo (Binance)" : "Simulação";
+    const symLabel = (SYMBOLS.find((s) => s.value === state.symbol) || {}).label || state.symbol;
     const time = new Date().toLocaleTimeString("pt-BR");
-    return `${src} — ${symLabel} — ${state.timeframe} — atualizado às ${time}`;
-  }
-
-  // ---------------------------------------------------------------------
-  // Demo feed
-  // ---------------------------------------------------------------------
-
-  function stopDemo() {
-    if (state.demo && state.demo.timer) clearInterval(state.demo.timer);
-    state.demo = null;
-  }
-
-  function startDemo() {
-    stopDemo();
-    const cfg = SYMBOLS.demo.find((s) => s.value === state.symbol) || SYMBOLS.demo[0];
-    const durationMs = DEMO_CANDLE_DURATION_MS[state.timeframe] || 5000;
-    const nowSec = Math.floor(Date.now() / 1000);
-
-    const seedCount = 60;
-    let price = cfg.base;
-    let drift = 0;
-    const seeded = [];
-    for (let i = 0; i < seedCount; i++) {
-      const open = price;
-      let high = open;
-      let low = open;
-      const steps = 6;
-      for (let s = 0; s < steps; s++) {
-        const step = gaussianRandom() * cfg.vol * price + drift * price;
-        price = Math.max(price + step, price * 0.5);
-        high = Math.max(high, price);
-        low = Math.min(low, price);
-      }
-      const close = price;
-      seeded.push({
-        time: nowSec - (seedCount - i) * (durationMs / 1000),
-        open,
-        high,
-        low,
-        close,
-        volume: Math.abs(close - open) * (50 + Math.random() * 100) + 20,
-      });
-      if (Math.random() < 0.12) drift = (Math.random() - 0.5) * cfg.vol * 3;
-    }
-
-    seedHistory(seeded);
-    resetSignalUI();
-
-    let forming = {
-      time: seeded[seeded.length - 1].time + durationMs / 1000,
-      open: price,
-      high: price,
-      low: price,
-      close: price,
-      volume: 0,
-    };
-
-    state.demo = { timer: null, price, drift, startedAt: Date.now() };
-
-    state.demo.timer = setInterval(() => {
-      const step = gaussianRandom() * cfg.vol * state.demo.price + state.demo.drift * state.demo.price;
-      state.demo.price = Math.max(state.demo.price + step, state.demo.price * 0.5);
-      forming.close = state.demo.price;
-      forming.high = Math.max(forming.high, state.demo.price);
-      forming.low = Math.min(forming.low, state.demo.price);
-      forming.volume += Math.abs(step) * 40 + 2;
-
-      applyFormingCandle(forming);
-      setStatus(statusMessage());
-
-      if (Date.now() - state.demo.startedAt >= durationMs) {
-        applyClosedCandle(forming);
-        if (Math.random() < 0.3) state.demo.drift = (Math.random() - 0.5) * cfg.vol * 3;
-        state.demo.startedAt = Date.now();
-        forming = {
-          time: forming.time + durationMs / 1000,
-          open: forming.close,
-          high: forming.close,
-          low: forming.close,
-          close: forming.close,
-          volume: 0,
-        };
-      }
-    }, TICK_MS);
-  }
-
-  function gaussianRandom() {
-    let u = 0;
-    let v = 0;
-    while (u === 0) u = Math.random();
-    while (v === 0) v = Math.random();
-    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    return `Ao vivo (Binance) — ${symLabel} — ${state.timeframe} — atualizado às ${time}`;
   }
 
   // ---------------------------------------------------------------------
@@ -580,6 +476,10 @@
   // ---------------------------------------------------------------------
 
   function stopLive() {
+    if (state.reconnectTimer) {
+      clearTimeout(state.reconnectTimer);
+      state.reconnectTimer = null;
+    }
     if (state.ws) {
       state.ws.onclose = null;
       state.ws.onerror = null;
@@ -589,9 +489,7 @@
   }
 
   async function startLive() {
-    stopDemo();
     stopLive();
-    state.fallbackTriggered = false;
     setStatus(`Conectando à Binance — ${state.symbol} (${state.timeframe})…`);
 
     try {
@@ -614,7 +512,7 @@
       resetSignalUI();
       connectWebSocket();
     } catch (err) {
-      handleLiveFailure(`Não foi possível conectar à Binance a partir desta rede (${err.message}). Usando modo Simulação.`);
+      scheduleReconnect(`Não foi possível conectar à Binance (${err.message}).`);
     }
   }
 
@@ -654,26 +552,22 @@
     };
 
     ws.onerror = () => {
-      if (!opened) handleLiveFailure("Conexão em tempo real com a Binance falhou. Usando modo Simulação.");
+      if (!opened) scheduleReconnect("Conexão em tempo real com a Binance falhou.");
     };
 
     ws.onclose = () => {
-      if (!opened && state.source === "binance" && !state.fallbackTriggered) {
-        handleLiveFailure("Conexão com a Binance foi encerrada antes de abrir. Usando modo Simulação.");
-      }
+      if (!opened) scheduleReconnect("Conexão com a Binance foi encerrada antes de abrir.");
     };
   }
 
-  function handleLiveFailure(message) {
-    if (state.fallbackTriggered) return;
-    state.fallbackTriggered = true;
-    stopLive();
-    showToast(`⚠️ ${message}`);
-    state.source = "demo";
-    els.sourceSelect.value = "demo";
-    populateSymbolOptions();
-    setStatus("Simulação em andamento (fallback automático)…", "down");
-    startDemo();
+  function scheduleReconnect(message) {
+    if (state.reconnectTimer) return;
+    showToast(`⚠️ ${message} Tentando de novo em ${RECONNECT_DELAY_MS / 1000}s…`);
+    setStatus(`${message} Reconectando em ${RECONNECT_DELAY_MS / 1000}s…`, "down");
+    state.reconnectTimer = setTimeout(() => {
+      state.reconnectTimer = null;
+      startLive();
+    }, RECONNECT_DELAY_MS);
   }
 
   // ---------------------------------------------------------------------
@@ -681,29 +575,13 @@
   // ---------------------------------------------------------------------
 
   function populateSymbolOptions() {
-    const list = SYMBOLS[state.source];
-    els.symbolSelect.innerHTML = list.map((s) => `<option value="${s.value}">${s.label}</option>`).join("");
-    state.symbol = list[0].value;
+    els.symbolSelect.innerHTML = SYMBOLS.map((s) => `<option value="${s.value}">${s.label}</option>`).join("");
     els.symbolSelect.value = state.symbol;
   }
 
   function restart() {
-    stopDemo();
-    stopLive();
-    if (state.source === "binance") {
-      setStatus(`Conectando à Binance — ${state.symbol} (${state.timeframe})…`);
-      startLive();
-    } else {
-      setStatus("Iniciando simulação…");
-      startDemo();
-    }
+    startLive();
   }
-
-  els.sourceSelect.addEventListener("change", () => {
-    state.source = els.sourceSelect.value;
-    populateSymbolOptions();
-    restart();
-  });
 
   els.symbolSelect.addEventListener("change", () => {
     state.symbol = els.symbolSelect.value;
@@ -720,5 +598,5 @@
   // ---------------------------------------------------------------------
 
   populateSymbolOptions();
-  startDemo();
+  startLive();
 })();
