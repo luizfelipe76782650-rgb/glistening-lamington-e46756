@@ -367,27 +367,9 @@
   // Zone markers (Order Blocks / FVGs) merged with signal markers
   // ---------------------------------------------------------------------
 
-  function buildZoneMarkers(snap) {
-    const out = [];
-    const pick = (zones) => zones.slice(-5);
-    function push(zones, label, color, position) {
-      pick(zones).forEach((z) => {
-        if (z && z.time) out.push({ time: z.time, position: position, color: color, shape: "circle", text: label });
-      });
-    }
-    push(snap.ob.bull, "OB+", "#2ee6a6", "belowBar");
-    push(snap.ob.bear, "OB−", "#ef5350", "aboveBar");
-    push(snap.fvg.bull, "FVG+", "#4f8cff", "belowBar");
-    push(snap.fvg.bear, "FVG−", "#f5b942", "aboveBar");
-    return out;
-  }
-
   function renderZones() {
     if (!state.lastSnap || !state.candles.length) return;
-    const zoneMk = buildZoneMarkers(state.lastSnap);
-    const merged = [...zoneMk, ...state.markers];
-    merged.sort((a, b) => a.time - b.time);
-    candleSeries.setMarkers(merged.slice(-160));
+    candleSeries.setMarkers(state.markers.slice(-160));
   }
 
   function pulseScan() {
