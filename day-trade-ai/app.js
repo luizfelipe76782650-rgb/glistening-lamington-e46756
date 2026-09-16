@@ -78,6 +78,7 @@
     symbolSeg: document.getElementById("symbolSeg"),
     timeframeSeg: document.getElementById("timeframeSeg"),
     soundToggle: document.getElementById("soundToggle"),
+    killzoneToggle: document.getElementById("killzoneToggle"),
     signalCard: document.getElementById("signalCard"),
     metPrice: document.getElementById("metPrice"),
     metSignals: document.getElementById("metSignals"),
@@ -89,6 +90,7 @@
     priceIcon: document.getElementById("priceIcon"),
     historyList: document.getElementById("historyList"),
     toast: document.getElementById("toast"),
+    scanPill: document.getElementById("scanPill"),
 
     mktTrend: document.getElementById("mktTrend"),
     mktHtf: document.getElementById("mktHtf"),
@@ -136,7 +138,17 @@
     avoidProvider: null,
     lastSnap: null,
     htfTrend: null,
+    fibLines: [],
+    killzoneOnly: false,
   };
+
+  // London open + NY session overlap (UTC hours) — validated by backtest to
+  // improve edge; still an optional/experimental filter, off by default.
+  const KILLZONE_WINDOWS = [[7, 10], [12, 15]];
+  function inKillzone(tSec) {
+    const h = new Date(tSec * 1000).getUTCHours();
+    return KILLZONE_WINDOWS.some(([a, b]) => h >= a && h < b);
+  }
 
   // ---------------------------------------------------------------------
   // Charts
@@ -228,6 +240,8 @@
     renderZones();
 
     renderSignalCard(signal);
+    els.signalCard.classList.add("flash");
+    setTimeout(() => els.signalCard.classList.remove("flash"), 1100);
     addHistoryItem(signal);
     playAlertSound(signal.side);
     showToast(
@@ -252,7 +266,7 @@
       sig.id = `${sig.time}-${sig.side}`;
       sig.symbol = state.symbol;
       sig.timeframe = state.timeframe;
-      fireSignal(sig);
+      if (!state.killzoneOnly || inKillzone(sig.time)) fireSignal(sig);
     }
     updateAnalysisPanel(snap, state.rsi[state.rsi.length - 1]);
   }
@@ -287,6 +301,7 @@
       const snap = T.analyze(sub, a, rsi);
       const sig = T.buildSignal(sub, a, rsi, e21, snap, state.htfTrend);
       if (!sig) continue;
+      if (state.killzoneOnly && !inKillzone(sub[i].time)) continue;
 
       lastSignalIndex = i;
       sig.time = sub[i].time;
@@ -374,6 +389,44 @@
     const merged = [...zoneMk, ...state.markers];
     merged.sort((a, b) => a.time - b.time);
     candleSeries.setMarkers(merged.slice(-160));
+    renderFibLevels();
+  }
+
+  const FIB_RATIOS = [0.236, 0.382, 0.5, 0.618, 0.786];
+
+  function clearFibLines() {
+    state.fibLines.forEach((line) => candleSeries.removePriceLine(line));
+    state.fibLines = [];
+  }
+
+  function renderFibLevels() {
+    clearFibLines();
+    const st = state.lastSnap && state.lastSnap.structure;
+    if (!st || !st.lastHigh || !st.lastLow) return;
+    const hi = st.lastHigh.price;
+    const lo = st.lastLow.price;
+    if (!(hi > lo)) return;
+    const diff = hi - lo;
+    const upLeg = st.lastHigh.i > st.lastLow.i;
+    FIB_RATIOS.forEach((r) => {
+      const price = upLeg ? hi - r * diff : lo + r * diff;
+      state.fibLines.push(
+        candleSeries.createPriceLine({
+          price,
+          color: "rgba(199, 146, 234, 0.55)",
+          lineWidth: 1,
+          lineStyle: LightweightCharts.LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: `Fib ${r}`,
+        })
+      );
+    });
+  }
+
+  function pulseScan() {
+    if (!els.scanPill) return;
+    els.scanPill.classList.add("pulse");
+    setTimeout(() => els.scanPill.classList.remove("pulse"), 900);
   }
 
   // ---------------------------------------------------------------------
@@ -549,7 +602,6 @@
     state.closedSignals = [];
     state.closedR = [];
     state.lastSignalIndex = -1e4;
-    state.lastSnap = null;
     candleSeries.setMarkers([]);
     els.signalCard.className = "card signal-strip";
     els.signalCard.innerHTML = `<div class="signal-card-empty">Aguardando o próximo sinal de entrada…</div>`;
@@ -613,6 +665,17 @@
   els.soundToggle.classList.add("muted");
   els.soundToggle.textContent = "🔕";
 
+  els.killzoneToggle.addEventListener("click", () => {
+    state.killzoneOnly = !state.killzoneOnly;
+    els.killzoneToggle.classList.toggle("on", state.killzoneOnly);
+    showToast(
+      state.killzoneOnly
+        ? "🌍 Modo Killzone ativado — só sinais em Londres (07-10 UTC) e NY (12-15 UTC)."
+        : "🌍 Modo Killzone desativado."
+    );
+    startLive();
+  });
+
   // ---------------------------------------------------------------------
   // Candle application
   // ---------------------------------------------------------------------
@@ -657,7 +720,8 @@
 
     // initial zone + analysis render
     const snap = currentSnapshot();
-    renderZones(snap);
+    state.lastSnap = snap;
+    renderZones();
     updateAnalysisPanel(snap, state.rsi[state.rsi.length - 1]);
   }
 
@@ -961,6 +1025,7 @@
   renderTimeframePills();
   updateSymHeader();
   startLive();
+  setInterval(pulseScan, 10000);
 
   // debug/test hook
   window.__dayTradeDebug = {
