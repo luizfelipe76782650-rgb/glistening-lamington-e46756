@@ -39,6 +39,13 @@
   // Coinbase only supports a fixed set of granularities
   const COINBASE_GRAN = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "6h": 21600, "1d": 86400 };
 
+  // Higher timeframe used for trend confluence — trading against this bias
+  // is the single most common way an otherwise-valid setup fails.
+  const HTF_TIMEFRAME = {
+    "1m": "15m", "3m": "1h", "5m": "1h", "15m": "4h", "30m": "4h",
+    "1h": "1d", "2h": "1d", "4h": "1w", "6h": "1w", "1d": "1M",
+  };
+
   const FETCH_TIMEOUT_MS = 7000;
   const WS_OPEN_TIMEOUT_MS = 7000;
   const RECONNECT_DELAY_MS = 8000;
@@ -84,6 +91,7 @@
     toast: document.getElementById("toast"),
 
     mktTrend: document.getElementById("mktTrend"),
+    mktHtf: document.getElementById("mktHtf"),
     mktStructure: document.getElementById("mktStructure"),
     mktEvent: document.getElementById("mktEvent"),
     mktZones: document.getElementById("mktZones"),
@@ -127,6 +135,7 @@
     activeProvider: null,
     avoidProvider: null,
     lastSnap: null,
+    htfTrend: null,
   };
 
   // ---------------------------------------------------------------------
@@ -236,7 +245,7 @@
       updateAnalysisPanel(snap, state.rsi[state.rsi.length - 1]);
       return;
     }
-    const sig = T.buildSignal(state.candles, state.atr, state.rsi, state.ema21, snap);
+    const sig = T.buildSignal(state.candles, state.atr, state.rsi, state.ema21, snap, state.htfTrend);
     if (sig) {
       const i = state.candles.length - 1;
       sig.time = state.candles[i].time;
@@ -276,7 +285,7 @@
       const rsi = T.rsiSeries(closes, RSI_PERIOD);
       const e21 = T.emaSeries(closes, EMA_SLOW);
       const snap = T.analyze(sub, a, rsi);
-      const sig = T.buildSignal(sub, a, rsi, e21, snap);
+      const sig = T.buildSignal(sub, a, rsi, e21, snap, state.htfTrend);
       if (!sig) continue;
 
       lastSignalIndex = i;
@@ -380,6 +389,11 @@
     if (st && st.trend === "bull") setText(els.mktTrend, "Alta (HH/HL)");
     else if (st && st.trend === "bear") setText(els.mktTrend, "Baixa (LL/LH)");
     else setText(els.mktTrend, "Lateral");
+
+    const htfTf = HTF_TIMEFRAME[state.timeframe] || "—";
+    if (state.htfTrend === "bull") setText(els.mktHtf, `Alta (${htfTf})`);
+    else if (state.htfTrend === "bear") setText(els.mktHtf, `Baixa (${htfTf})`);
+    else setText(els.mktHtf, `Lateral/indisponível (${htfTf})`);
 
     if (st) {
       const hl = st.lastHigh;
@@ -777,6 +791,27 @@
     }
   }
 
+  async function fetchHtfTrend(providerId, info) {
+    const htfTf = HTF_TIMEFRAME[state.timeframe];
+    if (!htfTf) {
+      state.htfTrend = null;
+      return;
+    }
+    try {
+      const candles = await PROVIDERS[providerId].fetchHistory(info[providerId], htfTf);
+      if (candles.length < 25) {
+        state.htfTrend = null;
+        return;
+      }
+      const swings = T.findSwings(candles, 2);
+      const st = T.structureFrom(swings);
+      state.htfTrend = st ? st.trend : null;
+    } catch (err) {
+      console.warn(`[day-trade-ai] HTF trend fetch (${htfTf}) failed:`, err);
+      state.htfTrend = null;
+    }
+  }
+
   async function startLive() {
     stopLive();
     const info = symbolInfo(state.symbol);
@@ -794,6 +829,7 @@
       try {
         const candles = await provider.fetchHistory(info[providerId], state.timeframe);
         if (!candles.length) throw new Error("nenhum candle retornado");
+        await fetchHtfTrend(providerId, info);
         seedHistory(candles);
         resetSignalUI();
         backfillHistoricalSignals();

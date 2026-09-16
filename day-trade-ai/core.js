@@ -441,7 +441,7 @@
     return best;
   }
 
-  function buildSignal(candles, atr, rsi, ema21, snap) {
+  function buildSignal(candles, atr, rsi, ema21, snap, htfTrend) {
     var n = candles.length;
     var i = n - 1;
     var c = candles[i];
@@ -471,6 +471,12 @@
       if (price > e) add(buy, 6, "Preço acima da EMA21", false);
       else add(sell, 6, "Preço abaixo da EMA21", false);
     }
+
+    // --- Higher-timeframe trend confluence ----------------------------------
+    // Trading against a higher timeframe's trend is one of the most common
+    // ways an otherwise-valid setup fails, so this carries real weight.
+    if (htfTrend === "bull") { add(buy, 10, "A favor da tendência maior (HTF)", false); add(sell, -14, "Contra a tendência maior (HTF)", false); }
+    if (htfTrend === "bear") { add(sell, 10, "A favor da tendência maior (HTF)", false); add(buy, -14, "Contra a tendência maior (HTF)", false); }
     // structural break events
     var ev = snap.events;
     if (ev.choch) {
