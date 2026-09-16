@@ -6,12 +6,15 @@
   // ---------------------------------------------------------------------
 
   const SYMBOLS = [
-    { value: "BTCUSDT", label: "BTC/USDT", short: "BTC", icon: "🟠", assetClass: "crypto" },
-    { value: "PAXGUSDT", label: "XAU/USD (Ouro, via token PAXG)", short: "XAU", icon: "🥇", assetClass: "commodities" },
-    { value: "ETHUSDT", label: "ETH/USDT", short: "ETH", icon: "Ξ", assetClass: "crypto" },
-    { value: "SOLUSDT", label: "SOL/USDT", short: "SOL", icon: "◎", assetClass: "crypto" },
-    { value: "BNBUSDT", label: "BNB/USDT", short: "BNB", icon: "🔶", assetClass: "crypto" },
+    { value: "BTCUSDT", label: "BTC/USDT", short: "BTC", icon: "🟠", assetClass: "crypto", binance: "BTCUSDT", coinbase: "BTC-USD" },
+    { value: "PAXGUSDT", label: "XAU/USD (Ouro, via token PAXG)", short: "XAU", icon: "🥇", assetClass: "commodities", binance: "PAXGUSDT", coinbase: "PAXG-USD" },
+    { value: "ETHUSDT", label: "ETH/USDT", short: "ETH", icon: "Ξ", assetClass: "crypto", binance: "ETHUSDT", coinbase: "ETH-USD" },
+    { value: "SOLUSDT", label: "SOL/USDT", short: "SOL", icon: "◎", assetClass: "crypto", binance: "SOLUSDT", coinbase: "SOL-USD" },
+    { value: "BNBUSDT", label: "BNB/USDT", short: "BNB", icon: "🔶", assetClass: "crypto", binance: "BNBUSDT" },
   ];
+
+  const FETCH_TIMEOUT_MS = 7000;
+  const WS_OPEN_TIMEOUT_MS = 7000;
 
   function symbolInfo(value) {
     return SYMBOLS.find((s) => s.value === value) || { short: value, icon: "📈", assetClass: "crypto" };
@@ -67,6 +70,7 @@
     audioCtx: null,
     ws: null,
     reconnectTimer: null,
+    activeProvider: null,
   };
 
   // ---------------------------------------------------------------------
@@ -489,14 +493,121 @@
   }
 
   function statusMessage() {
-    const symLabel = (SYMBOLS.find((s) => s.value === state.symbol) || {}).label || state.symbol;
+    const info = symbolInfo(state.symbol);
+    const providerLabel = PROVIDERS[state.activeProvider] ? PROVIDERS[state.activeProvider].label : "?";
     const time = new Date().toLocaleTimeString("pt-BR");
-    return `Ao vivo (Binance) — ${symLabel} — ${state.timeframe} — atualizado às ${time}`;
+    return `Ao vivo (${providerLabel}) — ${info.short} — ${state.timeframe} — atualizado às ${time}`;
   }
 
   // ---------------------------------------------------------------------
-  // Binance live feed
+  // Live feed — tries Binance first, falls back to Coinbase automatically
+  // if a corretora is unreachable from the visitor's network.
   // ---------------------------------------------------------------------
+
+  function fetchJsonWithTimeout(url, ms) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+  }
+
+  const GRANULARITY_SEC = { "1m": 60, "5m": 300, "15m": 900 };
+
+  const PROVIDERS = {
+    binance: {
+      label: "Binance",
+      async fetchHistory(productSymbol, timeframe) {
+        const url = `https://api.binance.com/api/v3/klines?symbol=${productSymbol}&interval=${timeframe}&limit=150`;
+        const res = await fetchJsonWithTimeout(url, FETCH_TIMEOUT_MS);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const raw = await res.json();
+        if (!Array.isArray(raw)) throw new Error("resposta inesperada");
+        return raw.map((k) => ({
+          time: Math.floor(k[0] / 1000),
+          open: +k[1],
+          high: +k[2],
+          low: +k[3],
+          close: +k[4],
+          volume: +k[5],
+        }));
+      },
+      connectStream(productSymbol, timeframe, handlers) {
+        const stream = `${productSymbol.toLowerCase()}@kline_${timeframe}`;
+        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${stream}`);
+        ws.onopen = handlers.onOpen;
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            const k = msg.k;
+            if (!k) return;
+            const candle = {
+              time: Math.floor(k.t / 1000),
+              open: +k.o,
+              high: +k.h,
+              low: +k.l,
+              close: +k.c,
+              volume: +k.v,
+            };
+            if (k.x) handlers.onClosedCandle(candle);
+            else handlers.onFormingCandle(candle);
+          } catch (e) {
+            // ignore malformed message
+          }
+        };
+        ws.onerror = handlers.onError;
+        ws.onclose = handlers.onClose;
+        return ws;
+      },
+    },
+    coinbase: {
+      label: "Coinbase",
+      async fetchHistory(productSymbol, timeframe) {
+        const granularity = GRANULARITY_SEC[timeframe] || 300;
+        const url = `https://api.exchange.coinbase.com/products/${productSymbol}/candles?granularity=${granularity}`;
+        const res = await fetchJsonWithTimeout(url, FETCH_TIMEOUT_MS);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const raw = await res.json();
+        if (!Array.isArray(raw)) throw new Error("resposta inesperada");
+        // Coinbase candle rows: [time, low, high, open, close, volume], newest first.
+        return raw
+          .map((c) => ({ time: +c[0], low: +c[1], high: +c[2], open: +c[3], close: +c[4], volume: +c[5] }))
+          .sort((a, b) => a.time - b.time)
+          .slice(-150);
+      },
+      connectStream(productSymbol, timeframe, handlers) {
+        const granularity = GRANULARITY_SEC[timeframe] || 300;
+        const ws = new WebSocket("wss://ws-feed.exchange.coinbase.com");
+        let forming = null;
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ type: "subscribe", product_ids: [productSymbol], channels: ["matches"] }));
+          handlers.onOpen();
+        };
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type !== "match" && msg.type !== "last_match") return;
+            const price = +msg.price;
+            const size = +msg.size;
+            const tSec = Math.floor(new Date(msg.time).getTime() / 1000);
+            const bucket = Math.floor(tSec / granularity) * granularity;
+            if (!forming || forming.time !== bucket) {
+              if (forming) handlers.onClosedCandle(forming);
+              forming = { time: bucket, open: price, high: price, low: price, close: price, volume: 0 };
+            }
+            forming.high = Math.max(forming.high, price);
+            forming.low = Math.min(forming.low, price);
+            forming.close = price;
+            forming.volume += size;
+            handlers.onFormingCandle(forming);
+          } catch (e) {
+            // ignore malformed message
+          }
+        };
+        ws.onerror = handlers.onError;
+        ws.onclose = handlers.onClose;
+        return ws;
+      },
+    },
+  };
 
   function stopLive() {
     if (state.reconnectTimer) {
@@ -513,74 +624,61 @@
 
   async function startLive() {
     stopLive();
-    setStatus(`Conectando à Binance — ${state.symbol} (${state.timeframe})…`);
+    const info = symbolInfo(state.symbol);
+    const providerIds = ["binance", "coinbase"].filter((id) => info[id]);
 
-    try {
-      const url = `https://api.binance.com/api/v3/klines?symbol=${state.symbol}&interval=${state.timeframe}&limit=150`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const raw = await res.json();
-      if (!Array.isArray(raw)) throw new Error("Resposta inesperada");
-
-      const candles = raw.map((k) => ({
-        time: Math.floor(k[0] / 1000),
-        open: +k[1],
-        high: +k[2],
-        low: +k[3],
-        close: +k[4],
-        volume: +k[5],
-      }));
-
-      seedHistory(candles);
-      resetSignalUI();
-      connectWebSocket();
-    } catch (err) {
-      scheduleReconnect(`Não foi possível conectar à Binance (${err.message}).`);
+    for (const providerId of providerIds) {
+      const provider = PROVIDERS[providerId];
+      setStatus(`Conectando — ${provider.label} — ${info.short} (${state.timeframe})…`);
+      try {
+        const candles = await provider.fetchHistory(info[providerId], state.timeframe);
+        seedHistory(candles);
+        resetSignalUI();
+        state.activeProvider = providerId;
+        connectStream(providerId, info[providerId]);
+        return;
+      } catch (err) {
+        console.warn(`[day-trade-ai] ${provider.label} failed:`, err);
+        continue;
+      }
     }
+
+    scheduleReconnect(`Não foi possível conectar a nenhuma corretora (${providerIds.map((id) => PROVIDERS[id].label).join(" / ")}).`);
   }
 
-  function connectWebSocket() {
-    const stream = `${state.symbol.toLowerCase()}@kline_${state.timeframe}`;
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${stream}`);
-    state.ws = ws;
+  function connectStream(providerId, productSymbol) {
+    const provider = PROVIDERS[providerId];
     let opened = false;
-
-    ws.onopen = () => {
-      opened = true;
-      setStatus(statusMessage(), "live");
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        const k = msg.k;
-        if (!k) return;
-        const candle = {
-          time: Math.floor(k.t / 1000),
-          open: +k.o,
-          high: +k.h,
-          low: +k.l,
-          close: +k.c,
-          volume: +k.v,
-        };
-        if (k.x) {
-          applyClosedCandle(candle);
-        } else {
-          applyFormingCandle(candle);
-          setStatus(statusMessage(), "live");
-        }
-      } catch (e) {
-        // ignore malformed message
+    const openTimer = setTimeout(() => {
+      if (!opened) {
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.close();
+        scheduleReconnect(`${provider.label} não respondeu em tempo (timeout).`);
       }
-    };
+    }, WS_OPEN_TIMEOUT_MS);
 
-    ws.onerror = () => {
-      if (!opened) scheduleReconnect("Conexão em tempo real com a Binance falhou.");
-    };
-
-    ws.onclose = () => {
-      if (!opened) scheduleReconnect("Conexão com a Binance foi encerrada antes de abrir.");
-    };
+    const ws = provider.connectStream(productSymbol, state.timeframe, {
+      onOpen: () => {
+        opened = true;
+        clearTimeout(openTimer);
+        setStatus(statusMessage(), "live");
+      },
+      onClosedCandle: (candle) => applyClosedCandle(candle),
+      onFormingCandle: (candle) => {
+        applyFormingCandle(candle);
+        setStatus(statusMessage(), "live");
+      },
+      onError: () => {
+        clearTimeout(openTimer);
+        scheduleReconnect(`Conexão em tempo real com ${provider.label} falhou.`);
+      },
+      onClose: () => {
+        clearTimeout(openTimer);
+        scheduleReconnect(`Conexão com ${provider.label} foi encerrada.`);
+      },
+    });
+    state.ws = ws;
   }
 
   function scheduleReconnect(message) {
