@@ -201,8 +201,11 @@
   function evaluateSignal() {
     const n = state.candles.length;
     if (n < MIN_CANDLES_TO_EVALUATE) return;
+    const signal = evaluateSignalAt(n - 1);
+    if (signal) fireSignal(signal);
+  }
 
-    const i = n - 1;
+  function evaluateSignalAt(i) {
     const prevFast = state.ema9[i - 1];
     const prevSlow = state.ema21[i - 1];
     const fast = state.ema9[i];
@@ -259,7 +262,7 @@
       timeframe: state.timeframe,
     };
 
-    fireSignal(signal);
+    return signal;
   }
 
   function fireSignal(signal) {
@@ -280,6 +283,49 @@
     showToast(
       `${signal.side === "buy" ? "🟢 ENTRADA DE COMPRA" : "🔴 ENTRADA DE VENDA"} — ${formatPrice(signal.entry)} (confiança ${signal.confidence}%)`
     );
+  }
+
+  function backfillHistoricalSignals() {
+    const n = state.candles.length;
+    let lastSignal = null;
+    for (let i = MIN_CANDLES_TO_EVALUATE; i < n; i++) {
+      const signal = evaluateSignalAt(i);
+      if (!signal) continue;
+
+      let status = "open";
+      for (let j = i + 1; j < n; j++) {
+        const c = state.candles[j];
+        if (signal.side === "buy") {
+          if (c.high >= signal.tp) { status = "win"; break; }
+          if (c.low <= signal.sl) { status = "loss"; break; }
+        } else {
+          if (c.low <= signal.tp) { status = "win"; break; }
+          if (c.high >= signal.sl) { status = "loss"; break; }
+        }
+      }
+      signal.status = status;
+
+      state.markers.push({
+        time: signal.time,
+        position: signal.side === "buy" ? "belowBar" : "aboveBar",
+        color: signal.side === "buy" ? "#2ee6a6" : "#ef5350",
+        shape: signal.side === "buy" ? "arrowUp" : "arrowDown",
+        text: `${signal.side === "buy" ? "COMPRA" : "VENDA"}${tierSuffix(signal.confidence)} ${signal.confidence}%`,
+      });
+      addHistoryItem(signal);
+      if (status === "open") {
+        state.openSignals.push(signal);
+      } else {
+        state.closedSignals.push(signal);
+        updateHistoryItemResult(signal);
+      }
+      lastSignal = signal;
+    }
+
+    if (state.markers.length > MAX_MARKERS) state.markers = state.markers.slice(-MAX_MARKERS);
+    candleSeries.setMarkers(state.markers);
+    updateStats();
+    if (lastSignal) renderSignalCard(lastSignal);
   }
 
   function checkOpenSignals(latestPrice) {
@@ -634,6 +680,7 @@
         const candles = await provider.fetchHistory(info[providerId], state.timeframe);
         seedHistory(candles);
         resetSignalUI();
+        backfillHistoricalSignals();
         state.activeProvider = providerId;
         connectStream(providerId, info[providerId]);
         return;
