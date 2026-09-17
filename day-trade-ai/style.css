@@ -1143,3 +1143,39 @@ body {
   padding: 6px 12px;
   width: fit-content;
 }
+
+/* ---------------------------------------------------------------- correlation matrix */
+.corr-table {
+  border-collapse: separate;
+  border-spacing: 3px;
+}
+
+.corr-table th {
+  font-size: 11px;
+  padding: 4px 6px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.corr-table td {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 8px 6px;
+  min-width: 52px;
+  color: #0a0a0a;
+}
+
+.corr-table td.corr-diag {
+  color: var(--text-faint);
+  background: var(--panel) !important;
+  font-weight: 400;
+}
+
+.corr-table td.corr-label {
+  background: transparent !important;
+  color: var(--text-dim);
+  text-align: left;
+  font-weight: 600;
+}

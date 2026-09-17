@@ -251,6 +251,40 @@
               <p class="mc-note">Se a corretora ativa parar de responder (histórico ou tempo real), o painel troca para a próxima automaticamente e nunca mostra preço inventado.</p>
             </section>
 
+            <!-- Cross-asset correlation + comparator -->
+            <section class="card" id="correlationCard">
+              <div class="hist-head">
+                <h2 class="card-title">Correlação entre ativos</h2>
+                <button id="corrRefresh" class="fin-icon-btn small">🔄 Atualizar</button>
+              </div>
+              <p class="hist-hint" id="corrHint">Carregando histórico de todos os ativos rastreados…</p>
+              <div class="table-wrap">
+                <table class="fin-table corr-table" id="corrMatrix"></table>
+              </div>
+            </section>
+
+            <section class="card" id="comparatorCard">
+              <div class="hist-head">
+                <h2 class="card-title">Comparador de ativos</h2>
+                <span class="hist-hint">mesmo período e timeframe do gráfico principal</span>
+              </div>
+              <div class="table-wrap">
+                <table class="fin-table">
+                  <thead>
+                    <tr class="text-muted">
+                      <th class="text-left pl">Ativo</th>
+                      <th class="text-right">Retorno no período</th>
+                      <th class="text-right">Volatilidade</th>
+                      <th class="text-right pr">Drawdown máx.</th>
+                    </tr>
+                  </thead>
+                  <tbody id="comparatorList">
+                    <tr><td colspan="4"><div class="history-empty">Carregando…</div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
             <!-- History -->
             <section class="card" id="historySection">
               <div class="hist-head">

@@ -13,6 +13,10 @@
     { value: "ETHUSDT", label: "ETH/USDT", short: "ETH", icon: "Ξ", assetClass: "crypto", binance: "ETHUSDT", coinbase: "ETH-USD" },
     { value: "SOLUSDT", label: "SOL/USDT", short: "SOL", icon: "◎", assetClass: "crypto", binance: "SOLUSDT", coinbase: "SOL-USD" },
     { value: "BNBUSDT", label: "BNB/USDT", short: "BNB", icon: "🔶", assetClass: "crypto", binance: "BNBUSDT" },
+    { value: "XRPUSDT", label: "XRP/USDT", short: "XRP", icon: "◇", assetClass: "crypto", binance: "XRPUSDT", coinbase: "XRP-USD" },
+    { value: "ADAUSDT", label: "ADA/USDT", short: "ADA", icon: "♦", assetClass: "crypto", binance: "ADAUSDT", coinbase: "ADA-USD" },
+    { value: "DOGEUSDT", label: "DOGE/USDT", short: "DOGE", icon: "Ð", assetClass: "crypto", binance: "DOGEUSDT", coinbase: "DOGE-USD" },
+    { value: "LINKUSDT", label: "LINK/USDT", short: "LINK", icon: "⛓", assetClass: "crypto", binance: "LINKUSDT", coinbase: "LINK-USD" },
   ];
 
   const TIMEFRAMES = [
@@ -113,6 +117,10 @@
     sideBreakdown: document.getElementById("sideBreakdown"),
     setupBreakdown: document.getElementById("setupBreakdown"),
     providerStatusList: document.getElementById("providerStatusList"),
+    corrRefresh: document.getElementById("corrRefresh"),
+    corrHint: document.getElementById("corrHint"),
+    corrMatrix: document.getElementById("corrMatrix"),
+    comparatorList: document.getElementById("comparatorList"),
     methodRR: document.getElementById("methodRR"),
     methodCooldown: document.getElementById("methodCooldown"),
     setScoreMin: document.getElementById("setScoreMin"),
@@ -703,6 +711,149 @@
   }
 
   // ---------------------------------------------------------------------
+  // Cross-asset correlation + comparator (real data, all tracked symbols)
+  // ---------------------------------------------------------------------
+
+  function pctReturns(closes) {
+    const out = [];
+    for (let i = 1; i < closes.length; i++) out.push(closes[i] / closes[i - 1] - 1);
+    return out;
+  }
+
+  function pearson(a, b) {
+    const n = Math.min(a.length, b.length);
+    if (n < 2) return null;
+    a = a.slice(-n);
+    b = b.slice(-n);
+    const meanA = a.reduce((x, y) => x + y, 0) / n;
+    const meanB = b.reduce((x, y) => x + y, 0) / n;
+    let num = 0, denA = 0, denB = 0;
+    for (let i = 0; i < n; i++) {
+      const da = a[i] - meanA;
+      const db = b[i] - meanB;
+      num += da * db;
+      denA += da * da;
+      denB += db * db;
+    }
+    const den = Math.sqrt(denA * denB);
+    return den === 0 ? 0 : num / den;
+  }
+
+  function stdDev(values) {
+    const n = values.length;
+    if (n < 2) return 0;
+    const mean = values.reduce((a, b) => a + b, 0) / n;
+    const variance = values.reduce((a, v) => a + (v - mean) ** 2, 0) / (n - 1);
+    return Math.sqrt(variance);
+  }
+
+  function maxDrawdownPct(closes) {
+    let peak = closes[0];
+    let maxDD = 0;
+    for (const c of closes) {
+      if (c > peak) peak = c;
+      const dd = (peak - c) / peak;
+      if (dd > maxDD) maxDD = dd;
+    }
+    return maxDD * 100;
+  }
+
+  function corrColor(r) {
+    const clamp01 = (x) => Math.max(0, Math.min(1, x));
+    const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+    const gray = [42, 42, 42];
+    let rgb;
+    if (r >= 0) {
+      const t = clamp01(r);
+      const green = [46, 189, 133];
+      rgb = [lerp(gray[0], green[0], t), lerp(gray[1], green[1], t), lerp(gray[2], green[2], t)];
+    } else {
+      const t = clamp01(-r);
+      const red = [214, 69, 65];
+      rgb = [lerp(gray[0], red[0], t), lerp(gray[1], red[1], t), lerp(gray[2], red[2], t)];
+    }
+    return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+  }
+
+  async function fetchCrossAssetHistory(sym) {
+    for (const providerId of ["binance", "coinbase"]) {
+      const info = sym;
+      if (!info[providerId]) continue;
+      if (providerId === "coinbase" && !COINBASE_GRAN[state.timeframe]) continue;
+      try {
+        const candles = await PROVIDERS[providerId].fetchHistory(info[providerId], state.timeframe);
+        if (candles.length >= 20) return { symbol: sym, candles, provider: providerId };
+      } catch (e) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  async function loadCrossAssetData() {
+    if (!els.corrHint) return;
+    els.corrHint.textContent = `Carregando histórico real de ${SYMBOLS.length} ativos (${state.timeframe})…`;
+    els.comparatorList.innerHTML = `<tr><td colspan="4"><div class="history-empty">Carregando…</div></td></tr>`;
+
+    const results = await Promise.all(SYMBOLS.map(fetchCrossAssetHistory));
+    const ok = results.filter(Boolean);
+    const failed = SYMBOLS.length - ok.length;
+
+    if (ok.length < 2) {
+      els.corrHint.textContent = "Não foi possível carregar dados suficientes agora — tenta de novo em alguns segundos.";
+      els.comparatorList.innerHTML = `<tr><td colspan="4"><div class="history-empty">Sem dados.</div></td></tr>`;
+      return;
+    }
+
+    const dataset = ok.map((r) => ({
+      short: r.symbol.short,
+      icon: r.symbol.icon,
+      closes: r.candles.map((c) => c.close),
+      provider: r.provider,
+    }));
+    const returnsMap = dataset.map((d) => pctReturns(d.closes));
+
+    // Correlation matrix
+    let html = "<thead><tr><th></th>" + dataset.map((d) => `<th>${d.short}</th>`).join("") + "</tr></thead><tbody>";
+    dataset.forEach((row, i) => {
+      html += `<tr><td class="corr-label">${row.icon} ${row.short}</td>`;
+      dataset.forEach((col, j) => {
+        if (i === j) {
+          html += `<td class="corr-diag">1.00</td>`;
+        } else {
+          const r = pearson(returnsMap[i], returnsMap[j]);
+          html += `<td style="background:${corrColor(r)}">${r.toFixed(2)}</td>`;
+        }
+      });
+      html += "</tr>";
+    });
+    html += "</tbody>";
+    els.corrMatrix.innerHTML = html;
+
+    // Comparator
+    els.comparatorList.innerHTML = dataset
+      .map((d) => {
+        const ret = ((d.closes[d.closes.length - 1] / d.closes[0] - 1) * 100).toFixed(2);
+        const vol = (stdDev(pctReturns(d.closes)) * 100).toFixed(2);
+        const dd = maxDrawdownPct(d.closes).toFixed(2);
+        const retPos = Number(ret) >= 0;
+        return `
+          <tr>
+            <td class="pl">${d.icon} ${d.short}</td>
+            <td class="text-right" style="color:${retPos ? "var(--green)" : "var(--red)"}">${retPos ? "+" : ""}${ret}%</td>
+            <td class="text-right">${vol}%</td>
+            <td class="text-right pr" style="color:var(--red)">−${dd}%</td>
+          </tr>`;
+      })
+      .join("");
+
+    const time = new Date().toLocaleTimeString("pt-BR");
+    els.corrHint.textContent =
+      `${dataset.length} ativos, ${state.timeframe}, dados reais (${dataset[0].provider}) — atualizado às ${time}` +
+      (failed ? ` · ${failed} ativo(s) indisponível(is) agora` : "");
+  }
+
+  // ---------------------------------------------------------------------
   // Sound
   // ---------------------------------------------------------------------
 
@@ -1071,6 +1222,7 @@
         state.timeframe = t.value;
         renderTimeframePills();
         startLive();
+        loadCrossAssetData();
       });
       els.timeframeSeg.appendChild(b);
     });
@@ -1187,8 +1339,10 @@
   els.logoutBtn.addEventListener("click", () => {
     showToast("Este painel ainda não tem sistema de contas — não há nada pra sair. 🙂");
   });
+  els.corrRefresh.addEventListener("click", () => loadCrossAssetData());
   startLive();
   setInterval(pulseScan, 10000);
+  setTimeout(loadCrossAssetData, 4000);
 
   // debug/test hook
   window.__dayTradeDebug = {
