@@ -256,6 +256,46 @@ body {
   }
 }
 
+/* mobile tab bar: sidebar nav is hidden below 768px, this replaces it */
+.fin-mobile-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 14px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg, #000);
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.fin-mobile-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.fin-mobile-tabs .fin-nav-item {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.fin-mobile-tabs .fin-nav-item.active {
+  background: var(--raised);
+  border-color: var(--green-2, var(--green));
+  color: #e7e7e7;
+}
+
+@media (min-width: 768px) {
+  .fin-mobile-tabs {
+    display: none;
+  }
+}
+
 .fin-nav {
   display: flex;
   flex-direction: column;
@@ -779,6 +819,12 @@ body {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .table-wrap .fin-table {
+    min-width: 560px;
+  }
 }
 
 .fin-table th {
