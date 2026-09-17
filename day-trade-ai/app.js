@@ -141,6 +141,16 @@
     setCooldownVal: document.getElementById("setCooldownVal"),
     notifToggle: document.getElementById("notifToggle"),
     logoutBtn: document.getElementById("logoutBtn"),
+    calcBalance: document.getElementById("calcBalance"),
+    calcRiskPct: document.getElementById("calcRiskPct"),
+    calcSideBuy: document.getElementById("calcSideBuy"),
+    calcSideSell: document.getElementById("calcSideSell"),
+    calcEntry: document.getElementById("calcEntry"),
+    calcStop: document.getElementById("calcStop"),
+    calcRiskAmt: document.getElementById("calcRiskAmt"),
+    calcDistPct: document.getElementById("calcDistPct"),
+    calcQty: document.getElementById("calcQty"),
+    calcNotional: document.getElementById("calcNotional"),
   };
 
   // ---------------------------------------------------------------------
@@ -170,6 +180,7 @@
     lastSnap: null,
     htfTrend: null,
     killzoneOnly: false,
+    calcSide: "buy",
   };
 
   // ---------------------------------------------------------------------
@@ -1023,6 +1034,7 @@
     state.lastSnap = snap;
     renderZones();
     updateAnalysisPanel(snap, state.rsi[state.rsi.length - 1]);
+    autofillCalc();
   }
 
   function statusMessage() {
@@ -1393,6 +1405,65 @@
   }
 
   // ---------------------------------------------------------------------
+  // Position size calculator (FUNDS tab) — pure math on real inputs,
+  // auto-seeded with the live price and the engine's own ATR stop distance.
+  // ---------------------------------------------------------------------
+
+  function updatePositionCalc() {
+    const balance = Number(els.calcBalance.value);
+    const riskPct = Number(els.calcRiskPct.value);
+    const entry = Number(els.calcEntry.value);
+    const stop = Number(els.calcStop.value);
+    if (!(balance > 0) || !(riskPct > 0) || !(entry > 0) || !(stop > 0) || entry === stop) {
+      setText(els.calcRiskAmt, "—");
+      setText(els.calcDistPct, "—");
+      setText(els.calcQty, "—");
+      setText(els.calcNotional, "—");
+      return;
+    }
+    const riskAmt = balance * (riskPct / 100);
+    const distAbs = Math.abs(entry - stop);
+    const distPct = (distAbs / entry) * 100;
+    const qty = riskAmt / distAbs;
+    const notional = qty * entry;
+    setText(els.calcRiskAmt, formatPrice(riskAmt));
+    setText(els.calcDistPct, `${distPct.toFixed(2)}%`);
+    setText(els.calcQty, qty.toFixed(6));
+    setText(els.calcNotional, formatPrice(notional));
+  }
+
+  function autofillCalc() {
+    if (!els.calcEntry || !state.candles.length || !state.atr.length) return;
+    const price = state.candles[state.candles.length - 1].close;
+    const atrNow = state.atr[state.atr.length - 1];
+    if (!price || !atrNow) return;
+    const dist = atrNow * T.CONF.SL_ATR;
+    const stop = state.calcSide === "sell" ? price + dist : price - dist;
+    els.calcEntry.value = price >= 1 ? price.toFixed(2) : price.toFixed(6);
+    els.calcStop.value = stop >= 1 ? stop.toFixed(2) : stop.toFixed(6);
+    updatePositionCalc();
+  }
+
+  function initPositionCalc() {
+    if (!els.calcBalance) return;
+    els.calcSideBuy.addEventListener("click", () => {
+      state.calcSide = "buy";
+      els.calcSideBuy.classList.add("on");
+      els.calcSideSell.classList.remove("on");
+      autofillCalc();
+    });
+    els.calcSideSell.addEventListener("click", () => {
+      state.calcSide = "sell";
+      els.calcSideSell.classList.add("on");
+      els.calcSideBuy.classList.remove("on");
+      autofillCalc();
+    });
+    [els.calcBalance, els.calcRiskPct, els.calcEntry, els.calcStop].forEach((el) => {
+      el.addEventListener("input", updatePositionCalc);
+    });
+  }
+
+  // ---------------------------------------------------------------------
   // Settings panel (adjusts the live engine's own thresholds)
   // ---------------------------------------------------------------------
 
@@ -1486,6 +1557,7 @@
   renderTimeframePills();
   updateSymHeader();
   initSettings();
+  initPositionCalc();
   initNotifications();
   updateMethodologyText();
   renderProviderStatus();
