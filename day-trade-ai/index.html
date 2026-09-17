@@ -46,21 +46,22 @@
 
           <aside class="fin-sidebar">
             <nav class="fin-nav">
-              <div class="fin-nav-item active"><span class="fin-nav-dot"></span>DASHBOARD</div>
-              <div class="fin-nav-item" data-scroll="#perfCard"><span class="fin-nav-dot"></span>PRICE ACTION</div>
-              <div class="fin-nav-item" data-scroll="#analyticsCard"><span class="fin-nav-dot"></span>ANALYTICS</div>
-              <div class="fin-nav-item" data-scroll="#dataSourcesCard"><span class="fin-nav-dot"></span>ARBITRADER</div>
-              <div class="fin-nav-item" data-scroll="#methodologyCard"><span class="fin-nav-dot"></span>RESEARCHER</div>
-              <div class="fin-nav-item" data-scroll="#historySection"><span class="fin-nav-dot"></span>FUNDS</div>
+              <div class="fin-nav-item active" data-tab="dashboard"><span class="fin-nav-dot"></span>DASHBOARD</div>
+              <div class="fin-nav-item" data-tab="analytics"><span class="fin-nav-dot"></span>ANALYTICS</div>
+              <div class="fin-nav-item" data-tab="arbitrader"><span class="fin-nav-dot"></span>ARBITRADER</div>
+              <div class="fin-nav-item" data-tab="researcher"><span class="fin-nav-dot"></span>RESEARCHER</div>
+              <div class="fin-nav-item" data-tab="funds"><span class="fin-nav-dot"></span>FUNDS</div>
             </nav>
             <div class="fin-nav-footer">
-              <div class="fin-nav-item" data-scroll="#supportCard">FINBRO SUPPORT</div>
-              <div class="fin-nav-item" data-scroll="#settingsCard">SETTINGS</div>
+              <div class="fin-nav-item" data-tab="support">FINBRO SUPPORT</div>
+              <div class="fin-nav-item" data-tab="settings">SETTINGS</div>
               <div class="fin-nav-item" id="logoutBtn">LOGOUT</div>
             </div>
           </aside>
 
           <div class="fin-content">
+
+            <div class="tab-panel active" data-tab-panel="dashboard">
 
             <!-- Metrics -->
             <section class="card metrics">
@@ -123,6 +124,10 @@
               </div>
             </section>
 
+            </div>
+
+            <div class="tab-panel" data-tab-panel="analytics">
+
             <!-- Analytics: equity curve + breakdowns -->
             <section class="card" id="analyticsCard">
               <div class="hist-head">
@@ -175,6 +180,10 @@
                 <p class="mc-note" id="mcRisk">Risco fixo 1% · simulações…</p>
               </div>
             </section>
+
+            </div>
+
+            <div class="tab-panel" data-tab-panel="researcher">
 
             <!-- Methodology (Researcher tab) -->
             <section class="card" id="methodologyCard">
@@ -229,6 +238,10 @@
               <p class="mc-note">Nenhum indicador "prevê" o mercado. Isso reduz entradas ruins ao exigir várias coisas alinhadas ao mesmo tempo — não é garantia de lucro.</p>
             </section>
 
+            </div>
+
+            <div class="tab-panel" data-tab-panel="arbitrader">
+
             <!-- Data sources (Arbitrader tab) -->
             <section class="card" id="dataSourcesCard">
               <div class="hist-head">
@@ -249,6 +262,31 @@
                 </table>
               </div>
               <p class="mc-note">Se a corretora ativa parar de responder (histórico ou tempo real), o painel troca para a próxima automaticamente e nunca mostra preço inventado.</p>
+            </section>
+
+            <!-- Screener -->
+            <section class="card" id="screenerCard">
+              <div class="hist-head">
+                <h2 class="card-title">Screener técnico</h2>
+                <span class="hist-hint">todos os ativos rastreados, no mesmo timeframe do gráfico</span>
+              </div>
+              <div class="table-wrap">
+                <table class="fin-table">
+                  <thead>
+                    <tr class="text-muted">
+                      <th class="text-left pl">Ativo</th>
+                      <th class="text-right">Preço</th>
+                      <th class="text-right">Var. no período</th>
+                      <th class="text-right">RSI (14)</th>
+                      <th class="text-left">Tendência (EMA9/21)</th>
+                      <th class="text-right pr">Momentum</th>
+                    </tr>
+                  </thead>
+                  <tbody id="screenerList">
+                    <tr><td colspan="6"><div class="history-empty">Carregando…</div></td></tr>
+                  </tbody>
+                </table>
+              </div>
             </section>
 
             <!-- Cross-asset correlation + comparator -->
@@ -285,6 +323,10 @@
               </div>
             </section>
 
+            </div>
+
+            <div class="tab-panel" data-tab-panel="funds">
+
             <!-- History -->
             <section class="card" id="historySection">
               <div class="hist-head">
@@ -310,6 +352,10 @@
                 </table>
               </div>
             </section>
+
+            </div>
+
+            <div class="tab-panel" data-tab-panel="settings">
 
             <!-- Settings -->
             <section class="card" id="settingsCard">
@@ -341,6 +387,10 @@
               <p class="mc-note" id="settingsNote">Valores atuais salvos só nesta sessão do navegador (não é enviado pra nenhum servidor).</p>
             </section>
 
+            </div>
+
+            <div class="tab-panel" data-tab-panel="support">
+
             <!-- Support -->
             <section class="card" id="supportCard">
               <div class="hist-head">
@@ -352,6 +402,8 @@
               <div class="mkt-row"><span>Existe conta / login?</span><b>Ainda não — tudo roda no seu navegador, sem servidor.</b></div>
               <div class="mkt-row"><span>Posso confiar 100% nos sinais?</span><b>Não — acompanhe sempre com sua própria gestão de risco.</b></div>
             </section>
+
+            </div>
 
             <!-- Status -->
             <div class="status-row">

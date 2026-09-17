@@ -117,6 +117,7 @@
     sideBreakdown: document.getElementById("sideBreakdown"),
     setupBreakdown: document.getElementById("setupBreakdown"),
     providerStatusList: document.getElementById("providerStatusList"),
+    screenerList: document.getElementById("screenerList"),
     corrRefresh: document.getElementById("corrRefresh"),
     corrHint: document.getElementById("corrHint"),
     corrMatrix: document.getElementById("corrMatrix"),
@@ -231,11 +232,12 @@
   syncRange(priceChart, rsiChart);
   syncRange(rsiChart, priceChart);
 
-  window.addEventListener("resize", () => {
+  function resizeCharts() {
     priceChart.applyOptions({ width: document.getElementById("priceChart").clientWidth });
     rsiChart.applyOptions({ width: document.getElementById("rsiChart").clientWidth });
     equityChart.applyOptions({ width: document.getElementById("equityChart").clientWidth });
-  });
+  }
+  window.addEventListener("resize", resizeCharts);
 
   // ---------------------------------------------------------------------
   // Indicator math (delegated to TradeCore)
@@ -813,6 +815,35 @@
     }));
     const returnsMap = dataset.map((d) => pctReturns(d.closes));
 
+    // Screener: price, period change, RSI, EMA9/21 trend
+    if (els.screenerList) {
+      els.screenerList.innerHTML = dataset
+        .map((d) => {
+          const rsiArr = T.rsiSeries(d.closes, 14);
+          const rsiNow = rsiArr[rsiArr.length - 1];
+          const ema9 = T.emaSeries(d.closes, 9);
+          const ema21 = T.emaSeries(d.closes, 21);
+          const bull = ema9[ema9.length - 1] > ema21[ema21.length - 1];
+          const trendLabel = bull ? "▲ Alta (EMA9 > EMA21)" : "▼ Baixa (EMA9 < EMA21)";
+          const price = d.closes[d.closes.length - 1];
+          const chg = ((d.closes[d.closes.length - 1] / d.closes[0] - 1) * 100);
+          const chgPos = chg >= 0;
+          let momentum = "Neutro";
+          if (rsiNow >= 70) momentum = "Sobrecomprado";
+          else if (rsiNow <= 30) momentum = "Sobrevendido";
+          return `
+            <tr>
+              <td class="pl">${d.icon} ${d.short}</td>
+              <td class="text-right">${formatPrice(price)}</td>
+              <td class="text-right" style="color:${chgPos ? "var(--green)" : "var(--red)"}">${chgPos ? "+" : ""}${chg.toFixed(2)}%</td>
+              <td class="text-right">${rsiNow.toFixed(1)}</td>
+              <td style="color:${bull ? "var(--green)" : "var(--red)"}">${trendLabel}</td>
+              <td class="text-right pr">${momentum}</td>
+            </tr>`;
+        })
+        .join("");
+    }
+
     // Correlation matrix
     let html = "<thead><tr><th></th>" + dataset.map((d) => `<th>${d.short}</th>`).join("") + "</tr></thead><tbody>";
     dataset.forEach((row, i) => {
@@ -1235,15 +1266,19 @@
     setText(els.priceIcon, info.icon);
   }
 
-  document.querySelectorAll(".fin-nav-item[data-scroll]").forEach((item) => {
-    item.addEventListener("click", () => {
-      const target = document.querySelector(item.dataset.scroll);
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-        document.querySelectorAll(".fin-nav-item").forEach((n) => n.classList.remove("active"));
-        item.classList.add("active");
-      }
+  function switchTab(tabId) {
+    document.querySelectorAll(".tab-panel").forEach((panel) => {
+      panel.classList.toggle("active", panel.dataset.tabPanel === tabId);
     });
+    document.querySelectorAll(".fin-nav-item[data-tab]").forEach((item) => {
+      item.classList.toggle("active", item.dataset.tab === tabId);
+    });
+    document.querySelector(".fin-scroll")?.scrollTo({ top: 0, behavior: "auto" });
+    setTimeout(resizeCharts, 30);
+  }
+
+  document.querySelectorAll(".fin-nav-item[data-tab]").forEach((item) => {
+    item.addEventListener("click", () => switchTab(item.dataset.tab));
   });
 
   // ---------------------------------------------------------------------

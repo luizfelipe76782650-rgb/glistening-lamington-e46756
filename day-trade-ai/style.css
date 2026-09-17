@@ -219,6 +219,22 @@ body {
   min-width: 0;
 }
 
+.tab-panel {
+  display: none;
+  flex-direction: column;
+  gap: 24px;
+  animation: tabFadeIn 0.25s ease;
+}
+
+.tab-panel.active {
+  display: flex;
+}
+
+@keyframes tabFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* ---------------------------------------------------------------- sidebar */
 .fin-sidebar {
   position: sticky;
