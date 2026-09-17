@@ -8,15 +8,15 @@
   const T = window.TradeCore;
 
   const SYMBOLS = [
-    { value: "BTCUSDT", label: "BTC/USDT", short: "BTC", icon: "🟠", assetClass: "crypto", binance: "BTCUSDT", coinbase: "BTC-USD" },
-    { value: "PAXGUSDT", label: "XAU/USD (Ouro, via token PAXG)", short: "XAU", icon: "🥇", assetClass: "commodities", binance: "PAXGUSDT", coinbase: "PAXG-USD" },
-    { value: "ETHUSDT", label: "ETH/USDT", short: "ETH", icon: "Ξ", assetClass: "crypto", binance: "ETHUSDT", coinbase: "ETH-USD" },
-    { value: "SOLUSDT", label: "SOL/USDT", short: "SOL", icon: "◎", assetClass: "crypto", binance: "SOLUSDT", coinbase: "SOL-USD" },
-    { value: "BNBUSDT", label: "BNB/USDT", short: "BNB", icon: "🔶", assetClass: "crypto", binance: "BNBUSDT" },
-    { value: "XRPUSDT", label: "XRP/USDT", short: "XRP", icon: "◇", assetClass: "crypto", binance: "XRPUSDT", coinbase: "XRP-USD" },
-    { value: "ADAUSDT", label: "ADA/USDT", short: "ADA", icon: "♦", assetClass: "crypto", binance: "ADAUSDT", coinbase: "ADA-USD" },
-    { value: "DOGEUSDT", label: "DOGE/USDT", short: "DOGE", icon: "Ð", assetClass: "crypto", binance: "DOGEUSDT", coinbase: "DOGE-USD" },
-    { value: "LINKUSDT", label: "LINK/USDT", short: "LINK", icon: "⛓", assetClass: "crypto", binance: "LINKUSDT", coinbase: "LINK-USD" },
+    { value: "BTCUSDT", label: "BTC/USDT", short: "BTC", icon: "🟠", assetClass: "crypto", binance: "BTCUSDT", coinbase: "BTC-USD", kraken: "XBTUSD" },
+    { value: "PAXGUSDT", label: "XAU/USD (Ouro, via token PAXG)", short: "XAU", icon: "🥇", assetClass: "commodities", binance: "PAXGUSDT", coinbase: "PAXG-USD", kraken: "PAXGUSD" },
+    { value: "ETHUSDT", label: "ETH/USDT", short: "ETH", icon: "Ξ", assetClass: "crypto", binance: "ETHUSDT", coinbase: "ETH-USD", kraken: "ETHUSD" },
+    { value: "SOLUSDT", label: "SOL/USDT", short: "SOL", icon: "◎", assetClass: "crypto", binance: "SOLUSDT", coinbase: "SOL-USD", kraken: "SOLUSD" },
+    { value: "BNBUSDT", label: "BNB/USDT", short: "BNB", icon: "🔶", assetClass: "crypto", binance: "BNBUSDT", kraken: "BNBUSD" },
+    { value: "XRPUSDT", label: "XRP/USDT", short: "XRP", icon: "◇", assetClass: "crypto", binance: "XRPUSDT", coinbase: "XRP-USD", kraken: "XRPUSD" },
+    { value: "ADAUSDT", label: "ADA/USDT", short: "ADA", icon: "♦", assetClass: "crypto", binance: "ADAUSDT", coinbase: "ADA-USD", kraken: "ADAUSD" },
+    { value: "DOGEUSDT", label: "DOGE/USDT", short: "DOGE", icon: "Ð", assetClass: "crypto", binance: "DOGEUSDT", coinbase: "DOGE-USD", kraken: "XDGUSD" },
+    { value: "LINKUSDT", label: "LINK/USDT", short: "LINK", icon: "⛓", assetClass: "crypto", binance: "LINKUSDT", coinbase: "LINK-USD", kraken: "LINKUSD" },
   ];
 
   const TIMEFRAMES = [
@@ -42,6 +42,15 @@
 
   // Coinbase only supports a fixed set of granularities
   const COINBASE_GRAN = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "6h": 21600, "1d": 86400 };
+
+  // Kraken interval is in minutes and also only supports a fixed set
+  const KRAKEN_GRAN = { "1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080 };
+
+  // Kraken's REST pair name (e.g. "XBTUSD") differs from its websocket v2 symbol ("XBT/USD")
+  const KRAKEN_WS_SYMBOL = {
+    XBTUSD: "XBT/USD", PAXGUSD: "PAXG/USD", ETHUSD: "ETH/USD", SOLUSD: "SOL/USD",
+    BNBUSD: "BNB/USD", XRPUSD: "XRP/USD", ADAUSD: "ADA/USD", XDGUSD: "XDG/USD", LINKUSD: "LINK/USD",
+  };
 
   // Higher timeframe used for trend confluence — trading against this bias
   // is the single most common way an otherwise-valid setup fails.
@@ -162,6 +171,31 @@
     htfTrend: null,
     killzoneOnly: false,
   };
+
+  // ---------------------------------------------------------------------
+  // Preferences — persisted only in this browser (no server), so a reload
+  // keeps the symbol/timeframe/tab/settings the person left it on.
+  // ---------------------------------------------------------------------
+  const PREFS_KEY = "daytrade_prefs_v1";
+  function loadPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function savePrefs(patch) {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ ...loadPrefs(), ...patch }));
+    } catch (e) {
+      // private mode / storage disabled — falls back to session-only state
+    }
+  }
+  const prefs = loadPrefs();
+  if (prefs.symbol && SYMBOLS.some((s) => s.value === prefs.symbol)) state.symbol = prefs.symbol;
+  if (prefs.timeframe && TIMEFRAMES.some((t) => t.value === prefs.timeframe)) state.timeframe = prefs.timeframe;
+  if (typeof prefs.killzoneOnly === "boolean") state.killzoneOnly = prefs.killzoneOnly;
+  if (typeof prefs.soundEnabled === "boolean") state.soundEnabled = prefs.soundEnabled;
 
   // London open + NY session overlap (UTC hours) — validated by backtest to
   // improve edge; still an optional/experimental filter, off by default.
@@ -696,6 +730,7 @@
     const rows = [
       { id: "binance", label: "Binance", coverage: "Cripto (BTC, ETH, SOL, BNB, ouro via PAXG)", tf: "1m–1M" },
       { id: "coinbase", label: "Coinbase", coverage: "Cripto (BTC, ETH, SOL, ouro via PAXG)", tf: "1m, 5m, 15m, 1h, 6h, 1d" },
+      { id: "kraken", label: "Kraken", coverage: "Cripto (BTC, ETH, SOL, BNB, ouro via PAXG)", tf: "1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w" },
     ];
     els.providerStatusList.innerHTML = rows
       .map((r) => {
@@ -778,10 +813,11 @@
   }
 
   async function fetchCrossAssetHistory(sym) {
-    for (const providerId of ["binance", "coinbase"]) {
+    for (const providerId of ["binance", "coinbase", "kraken"]) {
       const info = sym;
       if (!info[providerId]) continue;
       if (providerId === "coinbase" && !COINBASE_GRAN[state.timeframe]) continue;
+      if (providerId === "kraken" && !KRAKEN_GRAN[state.timeframe]) continue;
       try {
         const candles = await PROVIDERS[providerId].fetchHistory(info[providerId], state.timeframe);
         if (candles.length >= 20) return { symbol: sym, candles, provider: providerId };
@@ -830,7 +866,9 @@
           const chgPos = chg >= 0;
           let momentum = "Neutro";
           if (rsiNow >= 70) momentum = "Sobrecomprado";
+          else if (rsiNow >= 60) momentum = "Momentum de alta";
           else if (rsiNow <= 30) momentum = "Sobrevendido";
+          else if (rsiNow <= 40) momentum = "Momentum de baixa";
           return `
             <tr>
               <td class="pl">${d.icon} ${d.short}</td>
@@ -920,13 +958,15 @@
     if (state.soundEnabled) ensureAudio();
     els.soundToggle.textContent = state.soundEnabled ? "🔔" : "🔕";
     els.soundToggle.classList.toggle("muted", !state.soundEnabled);
+    savePrefs({ soundEnabled: state.soundEnabled });
   });
-  els.soundToggle.classList.add("muted");
-  els.soundToggle.textContent = "🔕";
+  els.soundToggle.classList.toggle("muted", !state.soundEnabled);
+  els.soundToggle.textContent = state.soundEnabled ? "🔔" : "🔕";
 
   els.killzoneToggle.addEventListener("click", () => {
     state.killzoneOnly = !state.killzoneOnly;
     els.killzoneToggle.classList.toggle("on", state.killzoneOnly);
+    savePrefs({ killzoneOnly: state.killzoneOnly });
     showToast(
       state.killzoneOnly
         ? "🌍 Modo Killzone ativado — só sinais em Londres (07-10 UTC) e NY (12-15 UTC)."
@@ -934,6 +974,7 @@
     );
     startLive();
   });
+  els.killzoneToggle.classList.toggle("on", state.killzoneOnly);
 
   // ---------------------------------------------------------------------
   // Candle application
@@ -1099,6 +1140,63 @@
         return ws;
       },
     },
+    kraken: {
+      label: "Kraken",
+      async fetchHistory(productSymbol, timeframe) {
+        const interval = KRAKEN_GRAN[timeframe];
+        if (!interval) throw new Error("timeframe não suportado pela Kraken");
+        const url = `https://api.kraken.com/0/public/OHLC?pair=${productSymbol}&interval=${interval}`;
+        const res = await fetchJsonWithTimeout(url, FETCH_TIMEOUT_MS);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const raw = await res.json();
+        if (raw.error && raw.error.length) throw new Error(raw.error.join("; "));
+        const keys = Object.keys(raw.result || {}).filter((k) => k !== "last");
+        if (!keys.length) throw new Error("resposta inesperada");
+        return raw.result[keys[0]]
+          .map((r) => ({ time: +r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4], volume: +r[6] }))
+          .slice(-150);
+      },
+      connectStream(productSymbol, timeframe, handlers) {
+        const interval = KRAKEN_GRAN[timeframe];
+        if (!interval) throw new Error("timeframe não suportado pela Kraken");
+        const wsSymbol = KRAKEN_WS_SYMBOL[productSymbol];
+        if (!wsSymbol) throw new Error("símbolo não mapeado pra Kraken");
+        const ws = new WebSocket("wss://ws.kraken.com/v2");
+        let forming = null;
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ method: "subscribe", params: { channel: "ohlc", symbol: [wsSymbol], interval } }));
+          handlers.onOpen();
+        };
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.channel !== "ohlc" || !Array.isArray(msg.data) || !msg.data.length) return;
+            if (msg.type === "snapshot") {
+              // history already came from REST — only use the snapshot to seed the still-forming candle
+              const row = msg.data[msg.data.length - 1];
+              forming = {
+                time: Math.floor(new Date(row.interval_begin).getTime() / 1000),
+                open: +row.open, high: +row.high, low: +row.low, close: +row.close, volume: +row.volume,
+              };
+              handlers.onFormingCandle(forming);
+              return;
+            }
+            for (const row of msg.data) {
+              const bucket = Math.floor(new Date(row.interval_begin).getTime() / 1000);
+              const candle = { time: bucket, open: +row.open, high: +row.high, low: +row.low, close: +row.close, volume: +row.volume };
+              if (forming && forming.time !== bucket) handlers.onClosedCandle(forming);
+              forming = candle;
+              handlers.onFormingCandle(candle);
+            }
+          } catch (e) {
+            // ignore malformed message
+          }
+        };
+        ws.onerror = handlers.onError;
+        ws.onclose = handlers.onClose;
+        return ws;
+      },
+    },
   };
 
   function stopLive() {
@@ -1138,8 +1236,11 @@
   async function startLive() {
     stopLive();
     const info = symbolInfo(state.symbol);
-    let providerIds = ["binance", "coinbase"].filter(
-      (id) => !!info[id] && !(id === "coinbase" && !COINBASE_GRAN[state.timeframe])
+    let providerIds = ["binance", "coinbase", "kraken"].filter(
+      (id) =>
+        !!info[id] &&
+        !(id === "coinbase" && !COINBASE_GRAN[state.timeframe]) &&
+        !(id === "kraken" && !KRAKEN_GRAN[state.timeframe])
     );
     if (state.avoidProvider && providerIds.length > 1) {
       providerIds = providerIds.filter((id) => id !== state.avoidProvider).concat(providerIds.filter((id) => id === state.avoidProvider));
@@ -1232,6 +1333,7 @@
       b.addEventListener("click", () => {
         if (state.symbol === s.value) return;
         state.symbol = s.value;
+        savePrefs({ symbol: s.value });
         renderSymbolPills();
         updateSymHeader();
         startLive();
@@ -1251,6 +1353,7 @@
       b.addEventListener("click", () => {
         if (state.timeframe === t.value) return;
         state.timeframe = t.value;
+        savePrefs({ timeframe: t.value });
         renderTimeframePills();
         startLive();
         loadCrossAssetData();
@@ -1278,8 +1381,16 @@
   }
 
   document.querySelectorAll(".fin-nav-item[data-tab]").forEach((item) => {
-    item.addEventListener("click", () => switchTab(item.dataset.tab));
+    item.addEventListener("click", () => {
+      switchTab(item.dataset.tab);
+      savePrefs({ tab: item.dataset.tab });
+    });
   });
+
+  const VALID_TABS = ["dashboard", "analytics", "arbitrader", "researcher", "funds", "settings", "support"];
+  if (prefs.tab && VALID_TABS.includes(prefs.tab) && prefs.tab !== "dashboard") {
+    switchTab(prefs.tab);
+  }
 
   // ---------------------------------------------------------------------
   // Settings panel (adjusts the live engine's own thresholds)
@@ -1291,6 +1402,10 @@
   }
 
   function initSettings() {
+    if (Number.isFinite(prefs.scoreMin)) T.CONF.SCORE_MIN = prefs.scoreMin;
+    if (Number.isFinite(prefs.acceptCore)) T.CONF.ACCEPT_CORE = prefs.acceptCore;
+    if (Number.isFinite(prefs.cooldown)) COOLDOWN_CANDLES = prefs.cooldown;
+
     els.setScoreMin.value = T.CONF.SCORE_MIN;
     els.setAcceptCore.value = T.CONF.ACCEPT_CORE;
     els.setCooldown.value = COOLDOWN_CANDLES;
@@ -1302,16 +1417,19 @@
       T.CONF.SCORE_MIN = Number(els.setScoreMin.value);
       setText(els.setScoreMinVal, T.CONF.SCORE_MIN);
       updateMethodologyText();
+      savePrefs({ scoreMin: T.CONF.SCORE_MIN });
     });
     els.setAcceptCore.addEventListener("input", () => {
       T.CONF.ACCEPT_CORE = Number(els.setAcceptCore.value);
       setText(els.setAcceptCoreVal, T.CONF.ACCEPT_CORE);
       updateMethodologyText();
+      savePrefs({ acceptCore: T.CONF.ACCEPT_CORE });
     });
     els.setCooldown.addEventListener("input", () => {
       COOLDOWN_CANDLES = Number(els.setCooldown.value);
       setText(els.setCooldownVal, COOLDOWN_CANDLES);
       updateMethodologyText();
+      savePrefs({ cooldown: COOLDOWN_CANDLES });
     });
   }
 
